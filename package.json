@@ -1,0 +1,51 @@
+{
+  "name": "beefmobile-monorepo",
+  "version": "1.0.0",
+  "description": "Beefmobile gaming platform - AWS-native microservices monorepo",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "services/*",
+    "infrastructure/cdk",
+    "shared/*"
+  ],
+  "scripts": {
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:matchmaking": "cd services/matchmaking && make run",
+    "dev:game-engine": "cd services/game-engine && npm run dev",
+    "dev:all": "docker-compose up -d",
+    "build:frontend": "cd frontend && npm run build",
+    "build:matchmaking": "cd services/matchmaking && make build",
+    "build:game-engine": "cd services/game-engine && npm run build",
+    "build:infrastructure": "cd infrastructure/cdk && npm run build",
+    "build:all": "npm run build:frontend && npm run build:matchmaking && npm run build:game-engine && npm run build:infrastructure",
+    "test:matchmaking": "cd services/matchmaking && make test",
+    "test:game-engine": "cd services/game-engine && npm test",
+    "test:all": "npm run test:matchmaking && npm run test:game-engine",
+    "lint:matchmaking": "cd services/matchmaking && make lint",
+    "lint:game-engine": "cd services/game-engine && npm run lint",
+    "deploy:dev": "cd infrastructure/cdk && npm run deploy:dev",
+    "deploy:prod": "cd infrastructure/cdk && npm run deploy:prod",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f"
+  },
+  "keywords": [
+    "gaming",
+    "aws",
+    "microservices",
+    "real-time",
+    "websocket",
+    "matchmaking"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/beefmobile.git"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}

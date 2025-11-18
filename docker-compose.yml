@@ -1,0 +1,98 @@
+version: '3.8'
+
+services:
+  # Redis for matchmaking queues
+  redis:
+    image: redis:7-alpine
+    container_name: beefmobile-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # LocalStack for AWS services (SNS, SQS, DynamoDB)
+  localstack:
+    image: localstack/localstack:latest
+    container_name: beefmobile-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=sns,sqs,dynamodb,s3
+      - DEBUG=1
+      - DATA_DIR=/tmp/localstack/data
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - localstack-data:/tmp/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Matchmaking Service
+  matchmaking:
+    build:
+      context: ./services/matchmaking
+      dockerfile: Dockerfile
+    container_name: beefmobile-matchmaking
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - ENV=development
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - AWS_REGION=us-east-1
+      - AWS_SNS_TOPIC_ARN=arn:aws:sns:us-east-1:000000000000:matchmaking-events
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - JWT_SECRET=dev-secret-key
+      - LOG_LEVEL=debug
+    depends_on:
+      redis:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    volumes:
+      - ./services/matchmaking:/app
+    restart: unless-stopped
+
+  # Game Engine Service
+  game-engine:
+    build:
+      context: ./services/game-engine
+      dockerfile: Dockerfile
+    container_name: beefmobile-game-engine
+    ports:
+      - "8081:8081"
+    environment:
+      - NODE_ENV=development
+      - PORT=8081
+      - AWS_REGION=us-east-1
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - DYNAMODB_GAME_SESSIONS_TABLE=game-sessions-dev
+      - DYNAMODB_GAME_ACTIONS_TABLE=game-actions-dev
+      - S3_REPLAYS_BUCKET=beefmobile-replays-dev
+      - SQS_MATCH_QUEUE_URL=http://localstack:4566/000000000000/match-queue
+      - SNS_GAME_EVENTS_TOPIC_ARN=arn:aws:sns:us-east-1:000000000000:game-events
+      - LOG_LEVEL=debug
+    depends_on:
+      localstack:
+        condition: service_healthy
+    volumes:
+      - ./services/game-engine:/app
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+  localstack-data:
+
+networks:
+  default:
+    name: beefmobile-network

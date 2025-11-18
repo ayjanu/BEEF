@@ -1,0 +1,180 @@
+# ============================================================================
+# Beefmobile Monorepo - Docker Ignore (Root)
+# ============================================================================
+
+# Git
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# Documentation
+README.md
+*.md
+docs/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+.circleci/
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# ============================================================================
+# Node.js (all services)
+# ============================================================================
+
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm
+.yarn-integrity
+.pnp.*
+.yarn/
+
+# ============================================================================
+# Build Artifacts
+# ============================================================================
+
+# Frontend
+frontend/dist/
+frontend/build/
+frontend/.vite/
+
+# Go binaries
+services/matchmaking/bin/
+services/*/bin/
+*.exe
+*.test
+*.out
+
+# CDK
+infrastructure/cdk/cdk.out/
+infrastructure/cdk/*.js
+infrastructure/cdk/*.d.ts
+
+# Shared packages
+shared/*/dist/
+shared/*/build/
+
+# ============================================================================
+# Testing
+# ============================================================================
+
+coverage/
+.nyc_output/
+**/__tests__/
+**/__mocks__/
+*_test.go
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+jest.config.js
+coverage.out
+
+# ============================================================================
+# Environment & Secrets
+# ============================================================================
+
+.env
+.env.*
+*.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# AWS credentials
+.aws/
+credentials.json
+
+# Secrets
+secrets/
+*.pem
+*.key
+
+# ============================================================================
+# Logs & Temporary Files
+# ============================================================================
+
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+*.temp
+.cache/
+
+# ============================================================================
+# Development Files
+# ============================================================================
+
+# Config files
+.prettierrc
+.eslintrc*
+.eslintcache
+.editorconfig
+tsconfig.json
+nodemon.json
+Makefile
+
+# Docker compose (for local dev)
+docker-compose.yml
+docker-compose.*.yml
+docker-compose.override.yml
+
+# Test data
+testdata/
+
+# ============================================================================
+# OS Files
+# ============================================================================
+
+# macOS
+.DS_Store
+._*
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+.directory
+
+# ============================================================================
+# Dependencies (will be downloaded in container)
+# ============================================================================
+
+# Go
+vendor/
+
+# LocalStack
+.localstack/
+localstack-data/
+
+# ============================================================================
+# Project Specific
+# ============================================================================
+
+# Scripts (not needed in production containers)
+scripts/
+
+# Kubernetes/Helm (deployment configs)
+k8s/
+kubernetes/
+helm/

@@ -1,0 +1,127 @@
+# ============================================================================
+# Frontend - Docker Ignore
+# ============================================================================
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+README.md
+*.md
+docs/
+INTEGRATION.md
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+.circleci/
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm
+.yarn-integrity
+.pnp.*
+.yarn/
+
+# Build artifacts (will be rebuilt in container)
+dist/
+build/
+.vite/
+.next/
+out/
+*.tsbuildinfo
+
+# Testing
+coverage/
+.nyc_output/
+**/__tests__/
+**/__mocks__/
+*.test.ts
+*.test.tsx
+*.test.js
+*.test.jsx
+*.spec.ts
+*.spec.tsx
+*.spec.js
+*.spec.jsx
+jest.config.js
+jest.setup.js
+vitest.config.ts
+
+# Environment files
+.env
+.env.*
+*.env
+.env.local
+.env.development
+.env.test
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+.cache/
+
+# OS files
+Thumbs.db
+.DS_Store
+._*
+Icon
+
+# Development configs
+.prettierrc
+.eslintrc*
+.eslintcache
+.editorconfig
+tsconfig.json
+tsconfig.node.json
+vite.config.ts
+
+# Docker
+Dockerfile
+docker-compose.yml
+docker-compose.*.yml
+.dockerignore
+
+# Storybook
+.storybook/
+storybook-static/
+
+# PWA
+public/sw.js
+public/workbox-*.js
+
+# Source maps (optional - include if you want them in prod)
+**/*.map
+
+# Deployment configs
+k8s/
+kubernetes/
+helm/
+infrastructure/
+
+# Miscellaneous
+.parcel-cache/
+.stylelintcache

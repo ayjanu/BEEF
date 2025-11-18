@@ -1,0 +1,365 @@
+# ============================================================================
+# Beefmobile Monorepo - Git Ignore
+# ============================================================================
+
+# ============================================================================
+# Dependencies
+# ============================================================================
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Go
+vendor/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# ============================================================================
+# Build Outputs
+# ============================================================================
+
+# Frontend
+frontend/dist/
+frontend/build/
+frontend/.vite/
+frontend/.next/
+frontend/out/
+
+# Go binaries
+services/matchmaking/bin/
+services/matchmaking/cmd/server/server
+services/*/bin/
+*.test
+*.out
+
+# CDK
+infrastructure/cdk/cdk.out/
+infrastructure/cdk/*.js
+infrastructure/cdk/*.d.ts
+infrastructure/cdk/*.js.map
+
+# Shared packages
+shared/*/dist/
+shared/*/build/
+shared/*/lib/
+
+# ============================================================================
+# Environment & Configuration
+# ============================================================================
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+.env.*.local
+
+# AWS
+.aws/
+aws-exports.js
+
+# Terraform (if ever used)
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# ============================================================================
+# IDE & Editor
+# ============================================================================
+
+# VSCode
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+*.code-workspace
+
+# JetBrains (WebStorm, GoLand, IntelliJ)
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Sublime
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+.*.swp
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# ============================================================================
+# Operating System
+# ============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+.directory
+.Trash-*
+.nfs*
+
+# ============================================================================
+# Testing & Coverage
+# ============================================================================
+
+# Coverage reports
+coverage/
+*.lcov
+.nyc_output/
+*.coverage
+htmlcov/
+.coverage
+.coverage.*
+coverage.out
+coverage.txt
+
+# Test outputs
+test-results/
+junit.xml
+*.test.log
+
+# ============================================================================
+# Logs & Debugging
+# ============================================================================
+
+# Log files
+*.log
+logs/
+*.log.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# ============================================================================
+# Docker & Container
+# ============================================================================
+
+# Docker volumes
+docker-compose.override.yml
+.docker/
+
+# ============================================================================
+# CDK & CloudFormation
+# ============================================================================
+
+# CDK
+cdk.context.json
+.cdk.staging/
+
+# CloudFormation
+cloudformation-template-*.json
+
+# ============================================================================
+# Security & Secrets
+# ============================================================================
+
+# Private keys
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+*.jks
+
+# Secrets
+secrets/
+credentials.json
+*-credentials.json
+service-account.json
+
+# SSL certificates
+*.crt
+*.cer
+*.der
+
+# ============================================================================
+# Temporary & Cache
+# ============================================================================
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+*.cache
+.cache/
+
+# Package manager cache
+.npm/
+.yarn/
+.pnp.*
+.eslintcache
+.stylelintcache
+
+# Parcel cache
+.parcel-cache/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Next.js cache
+.next/
+
+# Nuxt.js
+.nuxt/
+
+# Gatsby
+.cache/
+public/
+
+# ============================================================================
+# Database & Data
+# ============================================================================
+
+# SQLite
+*.sqlite
+*.sqlite3
+*.db
+
+# Database dumps
+*.sql
+*.dump
+
+# ============================================================================
+# Miscellaneous
+# ============================================================================
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional stylelint cache
+.stylelintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# Serverless
+.serverless/
+
+# FuseBox
+.fusebox/
+
+# DynamoDB Local
+.dynamodb/
+
+# TernJS
+.tern-port
+
+# Stores VSCode versions used for testing VSCode extensions
+.vscode-test
+
+# yarn v2
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# Sentry
+.sentryclirc
+
+# ============================================================================
+# Project Specific
+# ============================================================================
+
+# LocalStack data
+.localstack/
+localstack-data/
+
+# Generated API clients
+**/generated/
+
+# Mock data (if applicable)
+# mock-data/
+
+# Benchmarks
+benchmarks/results/
+
+# Documentation builds (if using static site generators)
+docs/_build/
+docs/.build/
+
+# ============================================================================
+# Keep These
+# ============================================================================
+
+# Allow certain dotfiles that should be committed
+!.gitignore
+!.dockerignore
+!.nvmrc
+!.node-version
+!.editorconfig
+!.prettierrc
+!.eslintrc.js
+!.github/

@@ -1,0 +1,98 @@
+# ============================================================================
+# Game Engine Service - Docker Ignore
+# ============================================================================
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+README.md
+*.md
+docs/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+.circleci/
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn-integrity
+.pnp.*
+.yarn/
+
+# Build artifacts (will be rebuilt in container)
+dist/
+build/
+*.tsbuildinfo
+
+# Testing
+coverage/
+.nyc_output/
+*.test.ts
+**/__tests__/
+**/__mocks__/
+jest.config.js
+jest.setup.js
+
+# Environment files
+.env
+.env.*
+*.env
+.env.local
+.env.development
+.env.test
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+.cache/
+
+# OS files
+Thumbs.db
+.DS_Store
+._*
+
+# Development configs
+nodemon.json
+.prettierrc
+.eslintrc*
+.editorconfig
+tsconfig.json
+
+# Docker
+Dockerfile
+docker-compose.yml
+docker-compose.*.yml
+.dockerignore
+
+# Deployment configs
+k8s/
+kubernetes/
+helm/
+infrastructure/

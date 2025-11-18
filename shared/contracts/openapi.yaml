@@ -1,0 +1,667 @@
+openapi: 3.0.3
+info:
+  title: Beefmobile API
+  description: API contracts for Beefmobile gaming platform
+  version: 1.0.0
+  contact:
+    name: Beefmobile Team
+
+servers:
+  - url: https://api.beefmobile.com/v1
+    description: Production
+  - url: https://api-staging.beefmobile.com/v1
+    description: Staging
+  - url: http://localhost:3000/v1
+    description: Local Development
+
+tags:
+  - name: Matchmaking
+    description: Matchmaking and queue management
+  - name: Game
+    description: Game session management
+  - name: Auth
+    description: Authentication and authorization
+  - name: Profile
+    description: User profiles and stats
+
+paths:
+  # ============================================================================
+  # Matchmaking Endpoints
+  # ============================================================================
+
+  /matchmaking/queue/join:
+    post:
+      tags:
+        - Matchmaking
+      summary: Join matchmaking queue
+      description: Add user to matchmaking queue for specified game mode and region
+      operationId: joinQueue
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - gameMode
+                - region
+              properties:
+                gameMode:
+                  $ref: '#/components/schemas/GameMode'
+                region:
+                  $ref: '#/components/schemas/GameRegion'
+      responses:
+        '200':
+          description: Successfully joined queue
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchmakingResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /matchmaking/queue/leave:
+    delete:
+      tags:
+        - Matchmaking
+      summary: Leave matchmaking queue
+      description: Remove user from current matchmaking queue
+      operationId: leaveQueue
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Successfully left queue
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /matchmaking/queue/status:
+    get:
+      tags:
+        - Matchmaking
+      summary: Get queue status
+      description: Get current position and estimated wait time
+      operationId: getQueueStatus
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Queue status retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchmakingResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: User not in queue
+
+  /matchmaking/match/{matchId}/accept:
+    post:
+      tags:
+        - Matchmaking
+      summary: Accept match
+      description: Accept found match and ready up
+      operationId: acceptMatch
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: matchId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Match accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Match'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /matchmaking/match/{matchId}/decline:
+    post:
+      tags:
+        - Matchmaking
+      summary: Decline match
+      description: Decline found match
+      operationId: declineMatch
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: matchId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Match declined
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /matchmaking/history:
+    get:
+      tags:
+        - Matchmaking
+      summary: Get match history
+      description: Get user's match history with pagination
+      operationId: getMatchHistory
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        '200':
+          description: Match history retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Match'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  pageSize:
+                    type: integer
+                  hasNext:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ============================================================================
+  # Game Endpoints
+  # ============================================================================
+
+  /game/session/start:
+    post:
+      tags:
+        - Game
+      summary: Start game session
+      description: Initialize a new game session from a matched game
+      operationId: startGameSession
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - matchId
+              properties:
+                matchId:
+                  type: string
+      responses:
+        '201':
+          description: Game session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GameSession'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /game/session/{sessionId}:
+    get:
+      tags:
+        - Game
+      summary: Get game session
+      description: Get current game session details and state
+      operationId: getGameSession
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Game session retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GameSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /game/session/{sessionId}/action:
+    post:
+      tags:
+        - Game
+      summary: Submit game action
+      description: Submit a player action to the game engine
+      operationId: submitGameAction
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GameAction'
+      responses:
+        '200':
+          description: Action processed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GameState'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Not your turn or invalid action
+
+  /game/session/{sessionId}/end:
+    post:
+      tags:
+        - Game
+      summary: End game session
+      description: End the game session and calculate results
+      operationId: endGameSession
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Game ended
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GameResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /game/session/{sessionId}/replay:
+    get:
+      tags:
+        - Game
+      summary: Get game replay
+      description: Get replay data for completed game
+      operationId: getGameReplay
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Replay data retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessionId:
+                    type: string
+                  replayUrl:
+                    type: string
+                    format: uri
+                  actions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GameAction'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+# ============================================================================
+# Components
+# ============================================================================
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    GameRegion:
+      type: string
+      enum:
+        - na-east
+        - na-west
+        - eu-west
+        - eu-east
+        - asia-pacific
+        - sa-east
+
+    GameMode:
+      type: string
+      enum:
+        - quickplay-1v1
+        - quickplay-2v2
+        - ranked-1v1
+        - ranked-2v2
+        - custom
+
+    MatchmakingStatus:
+      type: string
+      enum:
+        - QUEUED
+        - SEARCHING
+        - MATCH_FOUND
+        - ACCEPTED
+        - DECLINED
+        - TIMED_OUT
+        - CANCELLED
+
+    MatchStatus:
+      type: string
+      enum:
+        - PENDING_ACCEPTANCE
+        - READY
+        - IN_PROGRESS
+        - COMPLETED
+        - CANCELLED
+
+    GameStatus:
+      type: string
+      enum:
+        - INITIALIZING
+        - WAITING_FOR_PLAYERS
+        - IN_PROGRESS
+        - PAUSED
+        - COMPLETED
+        - ABORTED
+
+    MatchmakingResponse:
+      type: object
+      required:
+        - queueId
+        - position
+        - estimatedWaitTime
+        - status
+      properties:
+        queueId:
+          type: string
+        position:
+          type: integer
+        estimatedWaitTime:
+          type: integer
+          description: Estimated wait time in seconds
+        status:
+          $ref: '#/components/schemas/MatchmakingStatus'
+
+    Match:
+      type: object
+      required:
+        - matchId
+        - players
+        - region
+        - gameMode
+        - createdAt
+        - expiresAt
+        - status
+      properties:
+        matchId:
+          type: string
+        players:
+          type: array
+          items:
+            $ref: '#/components/schemas/MatchPlayer'
+        region:
+          $ref: '#/components/schemas/GameRegion'
+        gameMode:
+          $ref: '#/components/schemas/GameMode'
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        status:
+          $ref: '#/components/schemas/MatchStatus'
+
+    MatchPlayer:
+      type: object
+      required:
+        - userId
+        - mmr
+        - accepted
+      properties:
+        userId:
+          type: string
+        mmr:
+          type: number
+        accepted:
+          type: boolean
+        team:
+          type: integer
+
+    GameSession:
+      type: object
+      required:
+        - sessionId
+        - matchId
+        - gameMode
+        - region
+        - players
+        - status
+        - seed
+        - gameState
+      properties:
+        sessionId:
+          type: string
+        matchId:
+          type: string
+        gameMode:
+          $ref: '#/components/schemas/GameMode'
+        region:
+          $ref: '#/components/schemas/GameRegion'
+        players:
+          type: array
+          items:
+            $ref: '#/components/schemas/GamePlayer'
+        status:
+          $ref: '#/components/schemas/GameStatus'
+        seed:
+          type: integer
+          description: Deterministic seed for game logic
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+        winner:
+          type: string
+        gameState:
+          $ref: '#/components/schemas/GameState'
+
+    GamePlayer:
+      type: object
+      required:
+        - userId
+        - username
+        - connected
+        - ready
+        - score
+      properties:
+        userId:
+          type: string
+        username:
+          type: string
+        team:
+          type: integer
+        connected:
+          type: boolean
+        ready:
+          type: boolean
+        score:
+          type: number
+
+    GameState:
+      type: object
+      required:
+        - turn
+        - currentPlayerId
+        - boardState
+        - timestamp
+      properties:
+        turn:
+          type: integer
+        currentPlayerId:
+          type: string
+        boardState:
+          type: object
+          description: Game-specific state data
+        lastAction:
+          $ref: '#/components/schemas/GameAction'
+        timestamp:
+          type: string
+          format: date-time
+
+    GameAction:
+      type: object
+      required:
+        - type
+        - payload
+      properties:
+        actionId:
+          type: string
+        userId:
+          type: string
+        type:
+          type: string
+        payload:
+          type: object
+        timestamp:
+          type: string
+          format: date-time
+        validated:
+          type: boolean
+
+    GameResult:
+      type: object
+      required:
+        - sessionId
+        - winnerId
+        - loserId
+        - duration
+        - finalScore
+        - mmrChanges
+      properties:
+        sessionId:
+          type: string
+        winnerId:
+          type: string
+        loserId:
+          type: string
+        duration:
+          type: integer
+          description: Game duration in seconds
+        finalScore:
+          type: object
+          additionalProperties:
+            type: number
+        mmrChanges:
+          type: object
+          additionalProperties:
+            type: number
+        replay:
+          type: string
+          format: uri
+
+    Error:
+      type: object
+      required:
+        - code
+        - message
+        - statusCode
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+        statusCode:
+          type: integer
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    TooManyRequests:
+      description: Too many requests
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

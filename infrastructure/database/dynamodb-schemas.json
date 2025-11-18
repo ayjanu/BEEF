@@ -1,0 +1,198 @@
+{
+  "tables": {
+    "game-sessions": {
+      "tableName": "beefmobile-game-sessions",
+      "description": "Stores active and historical game sessions",
+      "partitionKey": {
+        "name": "sessionId",
+        "type": "S",
+        "description": "UUID of the game session"
+      },
+      "globalSecondaryIndexes": [
+        {
+          "indexName": "matchId-index",
+          "partitionKey": {
+            "name": "matchId",
+            "type": "S"
+          },
+          "projection": "ALL",
+          "description": "Query sessions by match ID"
+        },
+        {
+          "indexName": "status-startedAt-index",
+          "partitionKey": {
+            "name": "status",
+            "type": "S"
+          },
+          "sortKey": {
+            "name": "startedAt",
+            "type": "N"
+          },
+          "projection": "ALL",
+          "description": "Query sessions by status and start time"
+        }
+      ],
+      "attributes": {
+        "sessionId": "UUID string",
+        "matchId": "UUID string",
+        "gameMode": "enum: quickplay-1v1, quickplay-2v2, ranked-1v1, ranked-2v2, custom",
+        "region": "enum: na-east, na-west, eu-west, eu-east, asia-pacific, sa-east",
+        "players": "Array of player objects",
+        "status": "enum: INITIALIZING, WAITING_FOR_PLAYERS, IN_PROGRESS, PAUSED, COMPLETED, ABORTED",
+        "seed": "Number (deterministic seed)",
+        "startedAt": "Unix timestamp (number)",
+        "endedAt": "Unix timestamp (number)",
+        "winner": "UUID string (userId)",
+        "gameState": "Object containing current game state",
+        "createdAt": "ISO8601 timestamp",
+        "updatedAt": "ISO8601 timestamp",
+        "ttl": "Unix timestamp for auto-deletion (30 days after end)"
+      },
+      "sampleData": {
+        "sessionId": "550e8400-e29b-41d4-a716-446655440000",
+        "matchId": "660e8400-e29b-41d4-a716-446655440001",
+        "gameMode": "ranked-1v1",
+        "region": "na-east",
+        "players": [
+          {
+            "userId": "user-123",
+            "username": "player1",
+            "connected": true,
+            "ready": true,
+            "score": 50
+          },
+          {
+            "userId": "user-456",
+            "username": "player2",
+            "connected": true,
+            "ready": true,
+            "score": 45
+          }
+        ],
+        "status": "IN_PROGRESS",
+        "seed": 123456,
+        "startedAt": 1700000000,
+        "gameState": {
+          "turn": 10,
+          "currentPlayerId": "user-123",
+          "boardState": {},
+          "timestamp": "2024-01-01T00:00:00Z"
+        },
+        "createdAt": "2024-01-01T00:00:00Z",
+        "updatedAt": "2024-01-01T00:05:00Z"
+      }
+    },
+    "game-actions": {
+      "tableName": "beefmobile-game-actions",
+      "description": "Stores all game actions for replay and audit",
+      "partitionKey": {
+        "name": "sessionId",
+        "type": "S",
+        "description": "UUID of the game session"
+      },
+      "sortKey": {
+        "name": "actionId",
+        "type": "S",
+        "description": "UUID of the action (timestamp-based for ordering)"
+      },
+      "localSecondaryIndexes": [
+        {
+          "indexName": "timestamp-index",
+          "sortKey": {
+            "name": "timestamp",
+            "type": "N"
+          },
+          "projection": "ALL",
+          "description": "Query actions by timestamp"
+        }
+      ],
+      "attributes": {
+        "sessionId": "UUID string",
+        "actionId": "UUID string (timestamp-prefixed)",
+        "userId": "UUID string",
+        "type": "String (action type: MOVE, ATTACK, BUILD, etc.)",
+        "payload": "Object containing action data",
+        "timestamp": "Unix timestamp (number)",
+        "validated": "Boolean",
+        "ttl": "Unix timestamp for auto-deletion (90 days)"
+      },
+      "sampleData": {
+        "sessionId": "550e8400-e29b-41d4-a716-446655440000",
+        "actionId": "1700000000000-770e8400-e29b-41d4-a716-446655440002",
+        "userId": "user-123",
+        "type": "MOVE",
+        "payload": {
+          "from": { "x": 5, "y": 5 },
+          "to": { "x": 6, "y": 5 }
+        },
+        "timestamp": 1700000000000,
+        "validated": true,
+        "ttl": 1707776000
+      }
+    },
+    "chat-messages": {
+      "tableName": "beefmobile-chat-messages",
+      "description": "Stores chat messages",
+      "partitionKey": {
+        "name": "conversationId",
+        "type": "S",
+        "description": "UUID of conversation or room"
+      },
+      "sortKey": {
+        "name": "messageId",
+        "type": "S",
+        "description": "Timestamp-prefixed UUID"
+      },
+      "globalSecondaryIndexes": [
+        {
+          "indexName": "userId-timestamp-index",
+          "partitionKey": {
+            "name": "userId",
+            "type": "S"
+          },
+          "sortKey": {
+            "name": "timestamp",
+            "type": "N"
+          },
+          "projection": "ALL",
+          "description": "Query messages by user"
+        }
+      ],
+      "attributes": {
+        "conversationId": "UUID string",
+        "messageId": "Timestamp-prefixed UUID",
+        "userId": "UUID string",
+        "username": "String",
+        "content": "String (max 2000 chars)",
+        "timestamp": "Unix timestamp (number)",
+        "edited": "Boolean",
+        "deleted": "Boolean",
+        "moderated": "Boolean",
+        "ttl": "Unix timestamp for auto-deletion (60 days)"
+      }
+    },
+    "user-presence": {
+      "tableName": "beefmobile-user-presence",
+      "description": "Tracks online/offline status (Redis primary, DynamoDB backup)",
+      "partitionKey": {
+        "name": "userId",
+        "type": "S"
+      },
+      "attributes": {
+        "userId": "UUID string",
+        "status": "enum: online, offline, in_game, away",
+        "lastSeen": "Unix timestamp",
+        "currentSessionId": "UUID string (if in game)",
+        "socketId": "String (WebSocket connection ID)",
+        "ttl": "Unix timestamp (5 minutes for auto-cleanup)"
+      }
+    }
+  },
+  "notes": {
+    "ttl": "All tables should have TTL enabled for automatic cleanup",
+    "streams": "Enable DynamoDB Streams for analytics pipeline",
+    "backup": "Enable point-in-time recovery for production",
+    "encryption": "Use AWS-managed keys (SSE) for encryption at rest",
+    "billing": "Use on-demand billing for unpredictable traffic"
+  }
+}

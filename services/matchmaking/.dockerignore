@@ -1,0 +1,81 @@
+# ============================================================================
+# Matchmaking Service - Docker Ignore
+# ============================================================================
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+README.md
+*.md
+docs/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+.circleci/
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Development files
+Makefile
+docker-compose.yml
+docker-compose.*.yml
+
+# Tests
+*_test.go
+testdata/
+test/
+tests/
+coverage.out
+coverage.txt
+*.test
+
+# Build artifacts (will be rebuilt in container)
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Dependencies (will be downloaded in container)
+vendor/
+
+# Environment files
+.env
+.env.*
+*.env
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Go specific
+*.out
+*.sum
+
+# Deployment configs (not needed in container)
+k8s/
+kubernetes/
+helm/
+infrastructure/
