@@ -1,0 +1,6 @@
+name: matchmaking
+port: 8080
+envFromConfigMap: ""   # needs nothing from beef-env
+resources:
+  requests: { cpu: 50m, memory: 64Mi }
+  limits: { memory: 128Mi }

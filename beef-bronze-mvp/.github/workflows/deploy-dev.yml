@@ -1,0 +1,81 @@
+# After CI passes on main: build the five images, push them to ECR tagged with
+# the commit SHA, deploy to the dev EKS cluster with Helm, then run the same
+# end-to-end test against AWS. Uses GitHub OIDC; no AWS keys are stored.
+#
+# Repository settings (Settings → Environments → dev):
+#   vars.AWS_REGION, vars.AWS_DEPLOY_ROLE_ARN (Terraform output deploy_role_arn),
+#   vars.EKS_CLUSTER_NAME, vars.ECR_REGISTRY (<account>.dkr.ecr.<region>.amazonaws.com),
+#   vars.DEV_BASE_URL (ALB DNS or your domain, e.g. https://dev.beef.example)
+name: deploy-dev
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write # OIDC token for AWS
+  contents: read
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: dev
+    env:
+      TAG: ${{ github.event.workflow_run.head_sha || github.sha }}
+      REGISTRY: ${{ vars.ECR_REGISTRY }}
+    steps:
+      - uses: actions/checkout@v7
+        with: { ref: "${{ env.TAG }}" }
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push images (tagged by commit, immutable)
+        run: |
+          set -euo pipefail
+          build() { docker build -t "$REGISTRY/beef/$1:$TAG" "${@:2}" && docker push "$REGISTRY/beef/$1:$TAG"; }
+          build core-api    -f deploy/docker/node-service.Dockerfile --build-arg SERVICE=core-api .
+          build game-engine -f deploy/docker/node-service.Dockerfile --build-arg SERVICE=game-engine .
+          build matchmaking services/matchmaking
+          build chat        services/chat
+          build safety      services/safety
+
+      - uses: azure/setup-helm@v5
+
+      - name: Deploy with Helm
+        run: |
+          set -euo pipefail
+          aws eks update-kubeconfig --name "${{ vars.EKS_CLUSTER_NAME }}" --region "${{ vars.AWS_REGION }}"
+          # Dependencies first so readiness checks pass in order.
+          for s in safety matchmaking game-engine chat core-api; do
+            helm upgrade --install "$s" deploy/helm/beef-service \
+              --namespace beef \
+              -f "deploy/helm/values/$s.yaml" \
+              --set image.repository="$REGISTRY/beef/$s" \
+              --set image.tag="$TAG" \
+              --wait --timeout 10m
+          done
+
+      - uses: actions/setup-node@v7
+        with: { node-version: 22, cache: npm }
+
+      - name: End-to-end test against AWS dev
+        env:
+          BASE: ${{ vars.DEV_BASE_URL }}
+        run: |
+          npm ci
+          WS="${BASE/https:/wss:}"; WS="${WS/http:/ws:}"
+          CORE_URL="$BASE" SAFETY_URL="$BASE" GAME_WS_URL="$WS" CHAT_WS_URL="$WS/socket" \
+          E2E_REMOTE=1 npm run e2e

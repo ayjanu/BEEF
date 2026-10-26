@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "beef.name" . }}
+  labels: {{- include "beef.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicas }}
+  {{- end }}
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
+  selector:
+    matchLabels: {{- include "beef.selector" . | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "beef.labels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "beef.name" . }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {{- include "beef.selector" . | nindent 14 }}
+      containers:
+        - name: app
+          image: "{{ required "image.repository is required" .Values.image.repository }}:{{ required "image.tag is required" .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.port }}
+          env:
+            - name: PORT
+              value: {{ .Values.port | quote }}
+            - name: TMPDIR
+              value: /tmp
+            {{- range $k, $v := .Values.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          envFrom:
+            {{- with .Values.envFromConfigMap }}
+            - configMapRef: { name: {{ . }} }
+            {{- end }}
+            - secretRef: { name: {{ default (printf "%s-secrets" (include "beef.name" .)) .Values.envFromSecret }} }
+          livenessProbe:
+            httpGet: { path: {{ .Values.probes.liveness }}, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: {{ .Values.probes.readiness }}, port: http }
+            periodSeconds: 5
+            failureThreshold: 2
+          startupProbe:
+            httpGet: { path: {{ .Values.probes.liveness }}, port: http }
+            periodSeconds: 3
+            failureThreshold: 40
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 256Mi }

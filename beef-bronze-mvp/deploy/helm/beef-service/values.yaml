@@ -1,0 +1,60 @@
+# Defaults shared by every service. Per-service overrides live in deploy/helm/values/<service>.yaml.
+
+# Service name. Also the ServiceAccount name, which Terraform's Pod Identity
+# associations match on (modules/workload-iam), so keep them identical.
+name: ""
+
+image:
+  repository: ""
+  tag: ""
+  pullPolicy: IfNotPresent
+
+port: 3000
+replicas: 2
+
+# Plain environment variables (non-secret).
+env: {}
+# Shared, environment-specific settings created by the cluster-config Terraform stack.
+envFromConfigMap: beef-env
+# Defaults to "<name>-secrets", created by the cluster-config Terraform stack.
+envFromSecret: ""
+
+probes:
+  liveness: /healthz
+  readiness: /readyz
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 192Mi
+  limits:
+    memory: 512Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+
+podDisruptionBudget:
+  minAvailable: 1
+
+# Must satisfy the namespace's "restricted" Pod Security Standard.
+securityContext:
+  runAsNonRoot: true
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+  seccompProfile:
+    type: RuntimeDefault
+
+terminationGracePeriodSeconds: 30
+
+ingress:
+  enabled: false
+  className: beef-alb
+  # Lower runs first on the shared ALB. More specific paths need lower numbers.
+  groupOrder: 100
+  paths: []
+  annotations: {}

@@ -1,0 +1,6 @@
+name: safety
+port: 8000
+ingress:
+  enabled: true
+  groupOrder: 10           # most specific first: /v1/takedown must win over core-api's /v1
+  paths: ["/v1/takedown"]

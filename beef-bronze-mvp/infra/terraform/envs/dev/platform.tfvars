@@ -1,0 +1,14 @@
+env                       = "dev"
+region                    = "us-east-2"
+vpc_cidr                  = "10.40.0.0/16"
+single_nat_gateway        = true
+kubernetes_version        = "1.37"
+postgres_version          = "17.9"
+aurora_min_acu            = 0 # auto-pauses after 30 idle minutes: dev costs ~nothing overnight
+aurora_max_acu            = 4
+aurora_instance_count     = 1
+valkey_node_type          = "cache.t4g.micro"
+valkey_replicas           = 0
+deletion_protection       = false
+github_repository         = "REPLACE_ME/beef"  # owner/repo
+eks_public_endpoint_cidrs = ["203.0.113.0/24"] # REPLACE with your office/VPN egress ranges

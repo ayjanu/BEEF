@@ -1,0 +1,118 @@
+# Every pull request and every push to main: unit tests in all five languages,
+# app typecheck, infrastructure validation, then the full Bronze end-to-end
+# test against freshly built containers.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node:
+    name: TypeScript (contracts, game-rules, core-api, game-engine)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+
+  mobile:
+    name: Mobile app (typecheck, Expo doctor, Metro bundle)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 22, cache: npm, cache-dependency-path: "**/package-lock.json" }
+      - run: npm ci && npm run build -w packages/contracts -w packages/game-rules
+      - working-directory: apps/mobile
+        run: |
+          npm ci
+          npx tsc --noEmit
+          CI=1 npx expo-doctor
+          CI=1 npx expo export --platform android --output-dir /tmp/bundle-check
+
+  go:
+    name: Go (matchmaking)
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: services/matchmaking } }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with: { go-version-file: services/matchmaking/go.mod }
+      - run: test -z "$(gofmt -l .)"
+      - run: go vet ./...
+      - run: go test -race ./...
+
+  python:
+    name: Python (safety)
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: services/safety } }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: { python-version: "3.13" }
+      - run: pip install -e '.[dev]'
+      - run: pytest -q
+
+  elixir:
+    name: Elixir (chat)
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: services/chat } }
+    env: { MIX_ENV: test }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: erlef/setup-beam@v1
+        with: { otp-version: "27", elixir-version: "1.18" }
+      - run: mix deps.get
+      - run: mix compile --warnings-as-errors
+      - run: mix test
+
+  infra:
+    name: Terraform + Helm validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
+      - run: terraform fmt -recursive -check infra/terraform
+      - name: terraform validate
+        run: |
+          for s in bootstrap stacks/platform stacks/cluster-config; do
+            (cd infra/terraform/$s && terraform init -backend=false -input=false && terraform validate)
+          done
+      - uses: azure/setup-helm@v5
+      - name: helm lint + schema-validate rendered manifests
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar -xz kubeconform
+          for s in core-api game-engine matchmaking chat safety; do
+            helm lint deploy/helm/beef-service -f deploy/helm/values/$s.yaml --set image.repository=x,image.tag=y
+            helm template $s deploy/helm/beef-service -f deploy/helm/values/$s.yaml \
+              --set image.repository=example/$s,image.tag=ci > /tmp/$s.yaml
+          done
+          ./kubeconform -strict -summary -ignore-missing-schemas /tmp/*.yaml
+
+  e2e:
+    name: Bronze end-to-end (docker compose)
+    needs: [node, go, python, elixir]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run keys:dev
+      - run: docker compose up -d --build --wait --wait-timeout 300 postgres redis dynamodb
+      - run: docker compose up -d --build
+      - run: npm run e2e
+      - if: failure()
+        run: docker compose logs --no-color

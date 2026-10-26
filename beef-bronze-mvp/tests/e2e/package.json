@@ -1,0 +1,15 @@
+{
+  "name": "@beef/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "description": "End-to-end test of the Bronze loop against a running stack (local compose or AWS dev)",
+  "type": "module",
+  "scripts": {
+    "e2e": "node run.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.900.0",
+    "@aws-sdk/lib-dynamodb": "^3.900.0",
+    "phoenix": "^1.8.0"
+  }
+}

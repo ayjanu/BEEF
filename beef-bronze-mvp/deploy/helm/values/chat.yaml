@@ -1,0 +1,13 @@
+name: chat
+port: 4000
+env:
+  CORE_API_URL: http://core-api:3000
+  SAFETY_URL: http://safety:8000
+  RELEASE_TMP: /tmp          # the Elixir release writes runtime files here (root filesystem is read-only)
+resources:
+  requests: { cpu: 100m, memory: 256Mi }
+  limits: { memory: 768Mi }
+ingress:
+  enabled: true
+  groupOrder: 30
+  paths: ["/socket"]

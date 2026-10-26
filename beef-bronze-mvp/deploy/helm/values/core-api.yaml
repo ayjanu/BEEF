@@ -1,0 +1,12 @@
+name: core-api
+port: 3000
+env:
+  GAME_ENGINE_URL: http://game-engine:3100
+  MATCHMAKING_URL: http://matchmaking:8080
+  CHAT_URL: http://chat:4000
+  SAFETY_URL: http://safety:8000
+  DEFAULT_REGION: dfw
+ingress:
+  enabled: true
+  groupOrder: 100
+  paths: ["/v1"]

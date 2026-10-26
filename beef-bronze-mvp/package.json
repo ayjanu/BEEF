@@ -1,0 +1,23 @@
+{
+  "name": "beef",
+  "private": true,
+  "description": "BEEF! competitive-networking app: monorepo for services, mobile app, and infrastructure",
+  "workspaces": [
+    "packages/*",
+    "services/core-api",
+    "services/game-engine",
+    "tests/e2e"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "keys:dev": "node scripts/gen-dev-keys.mjs",
+    "stack:up": "docker compose up -d --build",
+    "stack:down": "docker compose down -v",
+    "e2e": "npm run e2e -w tests/e2e"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

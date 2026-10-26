@@ -1,0 +1,7 @@
+fastapi>=0.118
+uvicorn[standard]>=0.37
+asyncpg>=0.30
+pydantic[email]>=2.11
+
+[dev]
+pytest>=8.4

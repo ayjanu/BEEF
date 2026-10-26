@@ -1,0 +1,122 @@
+# BEEF Bronze local stack: every service in its real container, plus local stand-ins
+# for Aurora (Postgres 17), ElastiCache (Redis) and DynamoDB (DynamoDB Local).
+#
+#   npm run keys:dev     # once: writes .env with generated keys
+#   docker compose up -d --build
+#   npm run e2e          # end-to-end test against this stack
+name: beef
+
+x-common-env: &common
+  INTERNAL_TOKEN: ${INTERNAL_TOKEN:?run npm run keys:dev}
+  JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?run npm run keys:dev}
+  REDIS_URL: redis://redis:6379
+  AWS_REGION: us-east-2
+  DYNAMODB_ENDPOINT: http://dynamodb:8000
+  AWS_ACCESS_KEY_ID: local
+  AWS_SECRET_ACCESS_KEY: local
+  CHAT_MESSAGES_TABLE: beef-local-chat-messages
+  MOVE_LOG_TABLE: beef-local-move-logs
+
+x-build-args: &build-args
+  BASE_REGISTRY: ${BASE_REGISTRY:-public.ecr.aws/docker/library}
+
+services:
+  postgres:
+    image: ${BASE_REGISTRY:-public.ecr.aws/docker/library}/postgres:17
+    environment:
+      POSTGRES_USER: beef
+      POSTGRES_PASSWORD: beef
+      POSTGRES_DB: beef
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U beef"]
+      interval: 2s
+      retries: 30
+
+  redis:
+    image: ${BASE_REGISTRY:-public.ecr.aws/docker/library}/redis:7.4-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      retries: 30
+
+  dynamodb:
+    image: public.ecr.aws/aws-dynamodb-local/aws-dynamodb-local:latest
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-inMemory"]
+    ports: ["8001:8000"]
+
+  dynamodb-init:
+    build: { context: ., dockerfile: deploy/docker/node-service.Dockerfile, args: { <<: *build-args, SERVICE: game-engine } }
+    image: beef/game-engine:local
+    environment: *common
+    volumes: ["./scripts/create-local-tables.mjs:/repo/scripts/create-local-tables.mjs:ro"]
+    command: ["node", "scripts/create-local-tables.mjs"]
+    depends_on: [dynamodb]
+    restart: on-failure
+
+  core-api:
+    build: { context: ., dockerfile: deploy/docker/node-service.Dockerfile, args: { <<: *build-args, SERVICE: core-api } }
+    image: beef/core-api:local
+    environment:
+      <<: *common
+      APP_ENV: local
+      PORT: "3000"
+      DATABASE_URL: postgres://beef:beef@postgres:5432/beef
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY}
+      PII_HASH_KEY: ${PII_HASH_KEY}
+      DEV_OTP_CODE: ${DEV_OTP_CODE:-000000}
+      GAME_ENGINE_URL: http://game-engine:3100
+      MATCHMAKING_URL: http://matchmaking:8080
+      CHAT_URL: http://chat:4000
+      SAFETY_URL: http://safety:8000
+    ports: ["3000:3000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  game-engine:
+    image: beef/game-engine:local
+    environment:
+      <<: *common
+      PORT: "3100"
+      CORE_API_URL: http://core-api:3000
+    ports: ["3100:3100"]
+    depends_on:
+      redis: { condition: service_healthy }
+      dynamodb-init: { condition: service_completed_successfully }
+
+  matchmaking:
+    build: { context: services/matchmaking, args: *build-args }
+    image: beef/matchmaking:local
+    environment:
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
+      REDIS_URL: redis://redis:6379
+      PORT: "8080"
+    ports: ["8080:8080"]
+    depends_on:
+      redis: { condition: service_healthy }
+
+  chat:
+    build: { context: services/chat, args: *build-args }
+    image: beef/chat:local
+    environment:
+      <<: *common
+      PORT: "4000"
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE}
+      CORE_API_URL: http://core-api:3000
+      SAFETY_URL: http://safety:8000
+    ports: ["4000:4000"]
+    depends_on:
+      redis: { condition: service_healthy }
+      dynamodb-init: { condition: service_completed_successfully }
+
+  safety:
+    build: { context: services/safety, args: *build-args }
+    image: beef/safety:local
+    environment:
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
+      DATABASE_URL: postgres://beef:beef@postgres:5432/beef
+    ports: ["8000:8000"]
+    depends_on:
+      postgres: { condition: service_healthy }

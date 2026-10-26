@@ -1,0 +1,18 @@
+[project]
+name = "beef-safety"
+version = "0.1.0"
+description = "BEEF trust and safety service: moderation, reports, TAKE IT DOWN intake"
+requires-python = ">=3.13"
+dependencies = [
+  "fastapi>=0.118",
+  "uvicorn[standard]>=0.37",
+  "asyncpg>=0.30",
+  "pydantic[email]>=2.11",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.4"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

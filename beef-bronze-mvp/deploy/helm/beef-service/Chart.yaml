@@ -1,0 +1,6 @@
+apiVersion: v2
+name: beef-service
+description: One chart for every BEEF service (core-api, game-engine, matchmaking, chat, safety)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "BEEF!",
+    "slug": "beef",
+    "scheme": "beef",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "bundleIdentifier": "app.beef.dev",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSCameraUsageDescription": "BEEF uses the camera to record Level 3 challenge proof.",
+        "NSLocationWhenInUseUsageDescription": "BEEF uses your approximate location to find players and venues near you."
+      }
+    },
+    "android": {
+      "package": "app.beef.dev"
+    },
+    "plugins": ["expo-router", "expo-secure-store", "expo-font"],
+    "experiments": { "typedRoutes": true },
+    "extra": {
+      "apiUrl": "http://localhost:3000",
+      "gameWsUrl": "ws://localhost:3100",
+      "chatWsUrl": "ws://localhost:4000/socket"
+    }
+  }
+}
