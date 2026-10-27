@@ -133,6 +133,7 @@ async function finish(ended: EndedGame) {
     winnerSeat: ended.winnerSeat,
     draw: ended.draw,
     reason: ended.reason,
+    seatMoves: ended.seatMoves,
     scores: ended.scores,
     moveCount: s.log.filter((e) => e.kind === 'move').length,
     rulesVersion: s.rulesVersion,

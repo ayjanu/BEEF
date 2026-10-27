@@ -20,6 +20,7 @@ import { DB, type Db } from '../infra/db.ts';
 import { CLIENTS, type ServiceClients } from '../infra/clients.ts';
 import { TOKENS, type TokenService } from '../auth/jwt.ts';
 import { CurrentUser, UserGuard, ZodPipe, type AuthedUser } from '../common/http.ts';
+import { notBlocked } from '../social/blocks.ts';
 
 export function ageOn(birthDate: string | Date, today = new Date()): number {
   const b = new Date(birthDate);
@@ -113,8 +114,10 @@ export class ProfilesController {
   }
 
   @Get('profiles/:id')
-  async byId(@Param('id', ParseUUIDPipe) id: string): Promise<Profile> {
-    const row = (await this.db.query(`${PROFILE_SELECT} WHERE p.user_id = $1 AND u.status = 'active'`, [id])).rows[0];
+  async byId(@CurrentUser() user: AuthedUser, @Param('id', ParseUUIDPipe) id: string): Promise<Profile> {
+    const row = (
+      await this.db.query(`${PROFILE_SELECT} WHERE p.user_id = $1 AND u.status = 'active' AND ${notBlocked('$2', 'p.user_id')}`, [id, user.id])
+    ).rows[0];
     if (!row) throw new NotFoundException({ error: 'not_found' });
     return toProfile(row);
   }

@@ -17,6 +17,7 @@ import { MatchesConsumer } from './games/matches.consumer.ts';
 import { ProgressionController } from './progression/progression.controller.ts';
 import { ReportsController } from './safety/reports.controller.ts';
 import { SocialController } from './social/social.controller.ts';
+import { BlockCacheWarmer } from './social/blocks.ts';
 import { InternalVenuesController, VenueStaffController, VenuesController } from './venues/venues.controller.ts';
 import { MeetAlerts } from './venues/meet-alerts.ts';
 import { SafetySweep } from './venues/safety-sweep.ts';
@@ -59,6 +60,7 @@ export class AppModule {
         ResultsService,
         MatchesConsumer,
         MeetAlerts,
+        BlockCacheWarmer,
         SafetySweep,
       ],
     };

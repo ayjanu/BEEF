@@ -25,6 +25,13 @@ export interface ChessMove {
 }
 
 const SQUARE = /^[a-h][1-8]$/;
+/**
+ * Clocks start only after each side has made its first move (as on major chess
+ * servers), so nobody flags while still connecting. Each first move has this
+ * long; missing it aborts the game as a no-contest.
+ */
+export const CHESS_FIRST_MOVE_MS = 30_000;
+const opening = (s: ChessState) => s.sans.length < 2;
 const turnSeat = (fen: string): Seat => (fen.split(' ')[1] === 'w' ? 0 : 1);
 
 function isMove(m: unknown): m is ChessMove {
@@ -73,7 +80,8 @@ function makeChess(manifest: GameManifest, baseMs: number, incrementMs: number):
       if (s.result) return 'game_over';
       if (seat !== turnSeat(s.fen)) return 'not_your_turn';
       if (!isMove(move)) return 'bad_move_shape';
-      if (ctx.now - s.turnStartedAt >= s.clocks[seat as 0 | 1]) return 'time_expired';
+      const allowed = opening(s) ? CHESS_FIRST_MOVE_MS : s.clocks[seat as 0 | 1];
+      if (ctx.now - s.turnStartedAt >= allowed) return 'time_expired';
       try {
         new Chess(s.fen).move({ from: move.from, to: move.to, promotion: move.promotion });
         return null;
@@ -86,7 +94,7 @@ function makeChess(manifest: GameManifest, baseMs: number, incrementMs: number):
       const c = board(s.sans);
       const played = c.move({ from: move.from, to: move.to, promotion: move.promotion });
       const clocks: [number, number] = [s.clocks[0], s.clocks[1]];
-      clocks[seat as 0 | 1] = clocks[seat as 0 | 1] - (ctx.now - s.turnStartedAt) + s.incrementMs;
+      if (!opening(s)) clocks[seat as 0 | 1] = clocks[seat as 0 | 1] - (ctx.now - s.turnStartedAt) + s.incrementMs;
       let result: ChessState['result'] = null;
       if (c.isCheckmate()) result = { winner: seat, draw: false, reason: 'checkmate' };
       else if (c.isStalemate()) result = { winner: null, draw: true, reason: 'stalemate' };
@@ -99,9 +107,11 @@ function makeChess(manifest: GameManifest, baseMs: number, incrementMs: number):
     outcome: (s) =>
       s.result ? { done: true, winner: s.result.winner, draw: s.result.draw } : { done: false, winner: null, draw: false },
 
-    deadline: (s) => (s.result ? null : s.turnStartedAt + s.clocks[turnSeat(s.fen) as 0 | 1]),
+    deadline: (s) =>
+      s.result ? null : s.turnStartedAt + (opening(s) ? CHESS_FIRST_MOVE_MS : s.clocks[turnSeat(s.fen) as 0 | 1]),
 
     onDeadline(s, now) {
+      if (opening(s)) return { ...s, turnStartedAt: now, result: { winner: null, draw: false, reason: 'aborted' } };
       const flagged = turnSeat(s.fen);
       const clocks: [number, number] = [s.clocks[0], s.clocks[1]];
       clocks[flagged as 0 | 1] = 0;
@@ -123,7 +133,7 @@ const base = {
   maxPlayers: 2,
   chance: 'none' as const,
   turnBased: true,
-  rulesVersion: 1,
+  rulesVersion: 2,
   rated: true,
   verification: 'server' as const,
   userText: false,

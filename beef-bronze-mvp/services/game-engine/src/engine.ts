@@ -32,10 +32,15 @@ export interface StoredSession extends MatchState {
 export interface SessionStore {
   create(s: StoredSession): Promise<boolean>;
   get(sessionId: string): Promise<StoredSession | null>;
-  /** Apply `fn` atomically. `fn` returns the next record, or an error code to abort. */
+  /**
+   * Apply `fn` atomically. `fn` returns the next record, or an error code to
+   * abort. `timerOf` gives the next timer for the new record; it is written in
+   * the same atomic step, so a slower replica can never overwrite a newer timer.
+   */
   update(
     sessionId: string,
     fn: (s: StoredSession) => StoredSession | { error: string },
+    timerOf?: (s: StoredSession) => number | null,
   ): Promise<StoredSession | { error: string }>;
   /** Record when the session next needs the engine to act on its own (null = never). */
   schedule(sessionId: string, at: number | null): Promise<void>;
@@ -49,6 +54,8 @@ export interface EndedGame {
   draw: boolean;
   reason: string;
   scores?: number[];
+  /** Moves made by each seat: a seat that never played makes the game a no-contest. */
+  seatMoves: number[];
 }
 
 export type ActResult =
@@ -177,7 +184,9 @@ export class Engine {
     entryFor: (s: StoredSession) => LogEntry | { error: string },
   ): Promise<ActResult> {
     let ended: EndedGame | null = null;
+    const timerOf = (s: StoredSession) => (s.status === 'active' ? matchDeadline(getRules(s.gameId), s) : null);
     const res = await this.store.update(sessionId, (s) => {
+      ended = null; // the store may retry this function
       if (s.status !== 'active') return { error: 'game_over' };
       const rules = getRules(s.gameId);
       let m: MatchState = s;
@@ -207,11 +216,13 @@ export class Engine {
       }
       const o = matchOutcome(rules, m);
       const next: StoredSession = { ...s, ...m, status: o.done ? 'finished' : 'active' };
-      if (o.done) ended = { session: next, winnerSeat: o.winner, draw: o.draw, reason: endReason(rules, next), scores: o.scores };
+      if (o.done) {
+        const seatMoves = next.players.map((_, seat) => next.log.filter((e) => e.kind === 'move' && e.seat === seat).length);
+        ended = { session: next, winnerSeat: o.winner, draw: o.draw, reason: endReason(rules, next), scores: o.scores, seatMoves };
+      }
       return next;
-    });
+    }, timerOf);
     if ('error' in res) return { ok: false, error: res.error };
-    await this.store.schedule(sessionId, res.status === 'active' ? matchDeadline(getRules(res.gameId), res) : null);
     return { ok: true, session: res, ended };
   }
 }
@@ -229,11 +240,18 @@ export class MemoryStore implements SessionStore {
     const s = this.m.get(id);
     return s ? structuredClone(s) : null;
   }
-  async update(id: string, fn: (s: StoredSession) => StoredSession | { error: string }) {
+  async update(
+    id: string,
+    fn: (s: StoredSession) => StoredSession | { error: string },
+    timerOf?: (s: StoredSession) => number | null,
+  ) {
     const s = this.m.get(id);
     if (!s) return { error: 'session_not_found' };
     const next = fn(structuredClone(s));
-    if (!('error' in next)) this.m.set(id, structuredClone(next));
+    if (!('error' in next)) {
+      this.m.set(id, structuredClone(next));
+      if (timerOf) await this.schedule(id, timerOf(next));
+    }
     return next;
   }
   async schedule(id: string, at: number | null) {

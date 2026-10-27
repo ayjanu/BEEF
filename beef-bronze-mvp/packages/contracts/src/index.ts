@@ -351,6 +351,8 @@ export const ResultReport = z.object({
   reason: z.string().max(40).default('complete'),
   /** Per-seat scores when the title keeps them (boxes, trivia points, match count). */
   scores: z.array(z.number()).optional(),
+  /** Moves per seat. A seat that never played makes an engine game a no-contest (anti-farming). */
+  seatMoves: z.array(z.number().int().nonnegative()).optional(),
   moveCount: z.number().int().nonnegative(),
   rulesVersion: z.number().int(),
 });

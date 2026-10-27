@@ -7,7 +7,7 @@ import { CLIENTS, type ServiceClients } from '../infra/clients.ts';
 import { SessionsService } from './sessions.service.ts';
 import { DB, type Db } from '../infra/db.ts';
 import { CONFIG, type Config } from '../config.ts';
-import { isBlockedBetween } from '../social/blocks.ts';
+import { cacheBlock, isBlockedBetween } from '../social/blocks.ts';
 
 export const MATCH_STREAM = 'beef:matches';
 const GROUP = 'core-api';
@@ -85,7 +85,9 @@ export class MatchesConsumer implements OnApplicationBootstrap, OnApplicationShu
       const raw = Object.fromEntries(Array.from({ length: fields.length / 2 }, (_, i) => [fields[2 * i], fields[2 * i + 1]]));
       const match = MatchFound.parse({ ...raw, players: JSON.parse(String(raw.players)) });
       if (await isBlockedBetween(this.db, match.players[0]!, match.players[1]!)) {
-        this.log.warn(`match ${id} pairs blocked users; requeueing`);
+        this.log.warn(`match ${id} pairs blocked users; repairing the block cache and requeueing`);
+        // The matchmaker's cache missed this block: restore it first, or the same pair loops forever.
+        await cacheBlock(this.redis, match.players[0]!, match.players[1]!);
         await this.requeue(match.gameId, match.players);
         return;
       }

@@ -69,8 +69,8 @@ export function capForLevel(level: Level): number {
 
 export const XP_FOR: Readonly<Record<Outcome, number>> = { win: 30, draw: 20, loss: 15, complete: 20 };
 
-/** Games that ended without anyone playing (both players walked away) pay nothing. */
-export const NO_CONTEST_REASONS: ReadonlySet<string> = new Set(['abandoned']);
+/** Games that ended without both players playing (walk-aways, aborted starts) pay nothing. */
+export const NO_CONTEST_REASONS: ReadonlySet<string> = new Set(['abandoned', 'aborted']);
 
 /** Level n needs 50 × (n − 1)² XP; capped at level 100. */
 export function levelForXp(xp: number): number {

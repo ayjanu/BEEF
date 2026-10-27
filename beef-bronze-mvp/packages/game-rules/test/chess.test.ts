@@ -4,6 +4,7 @@ import {
   applyEntry,
   chessBullet,
   chessClassic,
+  CHESS_FIRST_MOVE_MS,
   deadlineEntry,
   matchOutcome,
   startMatch,
@@ -39,24 +40,31 @@ describe('chess', () => {
     assert.equal(chessClassic.validate(s, { from: 'z9', to: 'e4' }, 0, { now: 1 }), 'bad_move_shape');
   });
 
-  it('runs the clock with increment', () => {
-    const s = play(chessClassic.init(1, 2, 0), [['e2', 'e4']], 10_000);
-    assert.equal(s.clocks[0], 5 * 60_000 - 10_000 + 3_000);
-    assert.equal(s.clocks[1], 5 * 60_000);
-    assert.equal(chessClassic.deadline!(s), 10_000 + 5 * 60_000);
+  it('starts clocks after both first moves, then runs them with increment', () => {
+    const s = play(chessClassic.init(1, 2, 0), [['e2', 'e4'], ['e7', 'e5'], ['g1', 'f3']], 10_000);
+    assert.deepEqual(s.clocks, [5 * 60_000 - 10_000 + 3_000, 5 * 60_000]);
+    assert.equal(chessClassic.deadline!(s), 30_000 + 5 * 60_000);
+  });
+
+  it('aborts when a first move never comes', () => {
+    let m: MatchState = startMatch(chessBullet, 1, 2, 0);
+    assert.equal(deadlineEntry(chessBullet, m, CHESS_FIRST_MOVE_MS - 1), null);
+    m = applyEntry(chessBullet, m, deadlineEntry(chessBullet, m, CHESS_FIRST_MOVE_MS)!) as MatchState;
+    assert.deepEqual((m.state as ChessState).result, { winner: null, draw: false, reason: 'aborted' });
   });
 
   it('flags on time through the match layer', () => {
     let m: MatchState = startMatch(chessBullet, 1, 2, 0);
-    const r = applyEntry(chessBullet, m, { kind: 'move', seat: 0, move: { from: 'e2', to: 'e4' }, at: 1000 });
-    m = r as MatchState;
-    assert.equal(deadlineEntry(chessBullet, m, 60_000), null);
-    const late = applyEntry(chessBullet, m, { kind: 'move', seat: 1, move: { from: 'e7', to: 'e5' }, at: 61_000 });
+    m = applyEntry(chessBullet, m, { kind: 'move', seat: 0, move: { from: 'e2', to: 'e4' }, at: 1000 }) as MatchState;
+    m = applyEntry(chessBullet, m, { kind: 'move', seat: 1, move: { from: 'e7', to: 'e5' }, at: 2000 }) as MatchState;
+    // White's minute starts now.
+    assert.equal(deadlineEntry(chessBullet, m, 61_000), null);
+    const late = applyEntry(chessBullet, m, { kind: 'move', seat: 0, move: { from: 'g1', to: 'f3' }, at: 62_000 });
     assert.deepEqual(late, { error: 'time_expired' });
-    const e = deadlineEntry(chessBullet, m, 61_000)!;
+    const e = deadlineEntry(chessBullet, m, 62_000)!;
     assert.equal(e.kind, 'deadline');
     m = applyEntry(chessBullet, m, e) as MatchState;
-    assert.deepEqual(matchOutcome(chessBullet, m), { done: true, winner: 0, draw: false });
+    assert.deepEqual(matchOutcome(chessBullet, m), { done: true, winner: 1, draw: false });
     assert.equal((m.state as ChessState).result?.reason, 'timeout');
   });
 

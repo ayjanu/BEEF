@@ -312,14 +312,39 @@ await step('skill queue: Go matchmaker pairs both players and core-api opens the
   assert(session2.players.includes(alex.id) && session2.players.includes(blair.id), 'both seated');
 });
 
+/** Each player drops one disc (so the game counts as played), then `quitter` resigns. */
+async function oneEachThenResign(sessionId, quitter, other) {
+  const [gq, go] = await Promise.all([gameConnect(quitter, sessionId), gameConnect(other, sessionId)]);
+  const bySeat = { [gq.seat]: gq, [go.seat]: go };
+  for (const seat of [0, 1]) {
+    const g = bySeat[seat];
+    const before = g.msgs.length;
+    g.ws.send(JSON.stringify({ type: 'move', move: { column: seat } }));
+    await waitFor(() => g.msgs.slice(before).find((m) => m.type === 'state'), 'move ack');
+  }
+  gq.ws.send(JSON.stringify({ type: 'resign' }));
+  return [gq, go];
+}
+
 await step('resign hands the win to the opponent; repeat game pays half BP (diminishing returns)', async () => {
-  const [ga, gb] = await Promise.all([gameConnect(alex, session2.id), gameConnect(blair, session2.id)]);
-  ga.ws.send(JSON.stringify({ type: 'resign' }));
+  const [ga, gb] = await oneEachThenResign(session2.id, alex, blair);
   const end = await waitFor(() => gb.msgs.find((m) => m.type === 'end'), 'end after resign');
   assert(end.winnerSeat === gb.seat, 'Blair wins by resignation');
   const b = await waitFor(eventOf(blair, 'game_result', (p) => p.sessionId === session2.id), 'Blair result');
   assert(b.outcome === 'win' && b.bp === 5, `2nd game vs same opponent pays 10 × 0.5 = 5 BP, got ${b.bp}`);
   [ga, gb].forEach((g) => g.ws.close());
+});
+
+await step('an instant resignation is a no-contest: nothing paid, nothing posted (anti-farming)', async () => {
+  const s = await challengeAndAccept(alex, blair, 'four-up');
+  const g = await gameConnect(alex, s.id);
+  g.ws.send(JSON.stringify({ type: 'resign' }));
+  await waitFor(() => g.msgs.find((m) => m.type === 'end'), 'end');
+  const r = await waitFor(eventOf(blair, 'game_result', (p) => p.sessionId === s.id), 'result');
+  assert(r.xp === 0 && r.bp === 0 && r.ratingDelta === 0, `no-contest pays nothing: ${JSON.stringify(r)}`);
+  const feed = (await api('GET', '/v1/feed', blair.token)).data;
+  assert(!feed.posts.some((p) => p.sessionId === s.id), 'no feed card');
+  g.ws.close();
 });
 
 await step('leaderboard ranks both players from Redis', async () => {
@@ -497,10 +522,9 @@ await step('feed pages with a stable cursor', async () => {
   // Pad Alex's history past one page with quick resignations.
   for (let i = 0; i < 16; i++) {
     const s = await challengeAndAccept(alex, blair, 'four-up');
-    const g = await gameConnect(alex, s.id);
-    g.ws.send(JSON.stringify({ type: 'resign' }));
-    await waitFor(() => g.msgs.find((m) => m.type === 'end'), 'resign end');
-    g.ws.close();
+    const conns = await oneEachThenResign(s.id, alex, blair);
+    await waitFor(() => conns[0].msgs.find((m) => m.type === 'end'), 'resign end');
+    conns.forEach((g) => g.ws.close());
   }
   const ids = new Set();
   let next = null;
@@ -515,6 +539,7 @@ await step('feed pages with a stable cursor', async () => {
 });
 
 
+let pendingMeet;
 await step('Level 4: V3 + certified venue rules, QR check-in by staff, attested result, Shield, prompts', async () => {
   if (REMOTE || !INTERNAL_TOKEN) {
     console.log('    (skipped: needs the internal token to onboard a venue)');
@@ -602,6 +627,11 @@ await step('Level 4: V3 + certified venue rules, QR check-in by staff, attested 
   await api('POST', `/v1/bookings/${booking.id}/safety`, casey.token, { kind: 'ok' }, [404]);
   await api('POST', `/v1/bookings/${booking.id}/feedback`, alex.token, { feltSafe: true });
 
+  // A second meet, booked and confirmed, to show that a block cancels it.
+  const slot2 = (await api('POST', `/v1/venues/${certified.id}/slots`, dana.token, { gameId: 'pool-8-ball', startsAt: soon(7200), endsAt: soon(9000), capacity: 1 })).data;
+  pendingMeet = (await api('POST', '/v1/bookings', alex.token, { slotId: slot2.id, guestId: blair.id })).data;
+  await api('POST', `/v1/bookings/${pendingMeet.id}/accept`, blair.token, {});
+
   // The sweeper sends the "Are you OK?" prompt when the slot starts.
   await waitFor(eventOf(alex, 'safety_check', (p) => p.bookingId === booking.id && p.phase === 'start'), 'start-of-meet prompt', 40_000);
 });
@@ -677,6 +707,10 @@ await step('blocks: hidden from the feed, no challenges, chat closed, never pair
   await api('PUT', `/v1/follows/${blair.id}`, alex.token, null, [404]);
   assert(!(await api('GET', '/v1/threads', alex.token)).data.some((t) => t.id === alex.threadId), 'thread hidden');
   // Chat membership is cached for up to 60 s; a fresh socket on another node would refuse at once.
+  if (pendingMeet) {
+    const meets = (await api('GET', '/v1/bookings', alex.token)).data;
+    assert(meets.find((b) => b.id === pendingMeet.id).state === 'cancelled', 'a block cancels upcoming meets');
+  }
   const pending = (await api('GET', '/v1/challenges', alex.token)).data;
   assert(!pending.some((c) => c.toUserId === blair.id || c.fromUserId === blair.id), 'open challenges cancelled');
 

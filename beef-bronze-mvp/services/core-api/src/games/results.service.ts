@@ -79,7 +79,10 @@ export class ResultsService {
           : rules.manifest.verification === 'server'
             ? STRENGTH.serverAuthoritative
             : STRENGTH.mutualConfirm;
-      const noContest = NO_CONTEST_REASONS.has(reason);
+      // A seat that never moved means the game was not really played: no rating, XP or BP,
+      // so a second account cannot farm a main one with instant resignations.
+      const unplayed = rules.manifest.verification !== 'venue' && (report.seatMoves ?? []).some((n) => n === 0);
+      const noContest = NO_CONTEST_REASONS.has(reason) || unplayed;
       const winnerId = report.draw || report.winnerSeat === null ? null : report.players[report.winnerSeat] ?? null;
       const outcomeOf = (uid: string): Outcome =>
         winnerId !== null ? (winnerId === uid ? 'win' : 'loss') : report.draw ? 'draw' : 'complete';
@@ -206,13 +209,18 @@ export class ResultsService {
 
     if (!outcome) return { recorded: false, events: [] };
 
-    // After commit: leaderboard and pushes. Both are rebuildable from Postgres if they fail.
-    const pipeline = this.redis.pipeline();
-    for (const [uid, rating] of outcome.ratings) pipeline.zadd(leaderboardKey(report.gameId), rating, uid);
-    await pipeline.exec();
+    // After commit: leaderboard and pushes. Both are rebuildable from Postgres, so they never
+    // throw: a caller must be able to treat "record returned" as "paid exactly once".
+    try {
+      const pipeline = this.redis.pipeline();
+      for (const [uid, rating] of outcome.ratings) pipeline.zadd(leaderboardKey(report.gameId), rating, uid);
+      await pipeline.exec();
+    } catch (err) {
+      this.log.warn(`leaderboard update failed for ${report.sessionId}: ${(err as Error).message}`);
+    }
     for (const [i, uid] of report.players.entries()) {
       const ev = outcome.events[i];
-      if (ev) await this.clients.notify([uid], RealtimeEvent.gameResult, ev);
+      if (ev) await this.clients.notify([uid], RealtimeEvent.gameResult, ev); // best effort, never throws
     }
     this.log.log(`result recorded for session ${report.sessionId}`);
     return { recorded: true, events: outcome.events };

@@ -75,11 +75,13 @@ describe('game engine', () => {
     const engine = new Engine(new MemoryStore(), { now: () => now });
     await engine.open({ sessionId: SID, gameId: 'chess-bullet', players: [A, B], seed: 1 });
     assert.ok((await engine.move(SID, A, { from: 'e2', to: 'e4' })).ok);
-    now = 120_000;
-    const r = await engine.move(SID, B, { from: 'e7', to: 'e5' });
+    assert.ok((await engine.move(SID, B, { from: 'e7', to: 'e5' })).ok);
+    now = 120_000; // white's minute ran out at 60 s
+    const r = await engine.move(SID, A, { from: 'g1', to: 'f3' });
     assert.ok(r.ok, 'the due flag is applied; the move itself is dropped');
-    assert.equal(r.ended?.winnerSeat, 0);
+    assert.equal(r.ended?.winnerSeat, 1);
     assert.equal(r.ended?.reason, 'timeout');
+    assert.deepEqual(r.ended?.seatMoves, [1, 1]);
   });
 
   it('gives each seat its own view and hides trivia answers', async () => {

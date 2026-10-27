@@ -99,6 +99,19 @@ async function loadBooking(db: Db | Tx, id: string, lock = false): Promise<Recor
 
 const isPlayer = (b: Record<string, any>, userId: string) => b.host_id === userId || b.guest_id === userId;
 
+/**
+ * A meet goes ahead only while both players are active and neither has blocked
+ * the other. Checked at every step (accept, QR, staff scan), not just at booking.
+ */
+async function assertMeetAllowed(db: Db | Tx, b: Record<string, any>): Promise<void> {
+  const active = Number(
+    (await db.query(`SELECT count(*) FROM users WHERE id = ANY($1) AND status = 'active'`, [[b.host_id, b.guest_id]])).rows[0].count,
+  );
+  if (active !== 2 || (await isBlockedBetween(db, b.host_id, b.guest_id))) {
+    throw new ConflictException({ error: 'booking_not_open' });
+  }
+}
+
 /** Player-facing Level 4: find venues and slots, book with a match, check in by QR, stay safe. */
 @Controller('v1')
 @UseGuards(UserGuard)
@@ -225,6 +238,9 @@ export class VenuesController {
     @Body(new ZodPipe(BookingAcceptRequest)) body: { sharePlan: boolean },
   ): Promise<Booking> {
     requireTier(user, L4_TIER);
+    const pending = await loadBooking(this.db, id);
+    if (pending.guest_id !== user.id) throw new NotFoundException({ error: 'not_found' });
+    await assertMeetAllowed(this.db, pending);
     const r = await this.db.query(
       `UPDATE bookings b SET state = 'confirmed', guest_share_plan = $3
        FROM venue_slots s
@@ -274,6 +290,7 @@ export class VenuesController {
     if (!checkinOpen(b.starts_at.getTime(), b.ends_at.getTime(), Date.now())) {
       throw new ConflictException({ error: 'checkin_not_open' });
     }
+    await assertMeetAllowed(this.db, b);
     return {
       token: await this.tokens.signCheckin(user.id, id, CHECKIN_TTL_S),
       expiresAt: new Date(Date.now() + CHECKIN_TTL_S * 1000).toISOString(),
@@ -465,6 +482,7 @@ export class VenueStaffController {
       if (!isPlayer(b, claims.userId)) throw new BadRequestException({ error: 'invalid_or_expired_code' });
       if (b.state !== 'confirmed' && b.state !== 'checked_in') throw new ConflictException({ error: 'booking_not_confirmed' });
       if (!checkinOpen(b.starts_at.getTime(), b.ends_at.getTime(), Date.now())) throw new ConflictException({ error: 'checkin_not_open' });
+      await assertMeetAllowed(tx, b);
       const col = b.host_id === claims.userId ? 'host_checked_in_at' : 'guest_checked_in_at';
       await tx.query(`UPDATE bookings SET ${col} = coalesce(${col}, now()) WHERE id = $1`, [b.id]);
       await tx.query(

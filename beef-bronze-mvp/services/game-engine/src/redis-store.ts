@@ -19,6 +19,13 @@ const FINISHED_TTL_S = 60 * 60;
 const CAS = `
 if redis.call('GET', KEYS[1]) == ARGV[1] then
   redis.call('SET', KEYS[1], ARGV[2], 'EX', tonumber(ARGV[3]))
+  if ARGV[5] == '1' then
+    if ARGV[4] == '' then
+      redis.call('ZREM', KEYS[2], ARGV[6])
+    else
+      redis.call('ZADD', KEYS[2], tonumber(ARGV[4]), ARGV[6])
+    end
+  end
   return 1
 end
 return 0`;
@@ -36,14 +43,30 @@ export class RedisStore implements SessionStore {
     return raw ? (JSON.parse(raw) as StoredSession) : null;
   }
 
-  async update(id: string, fn: (s: StoredSession) => StoredSession | { error: string }) {
+  async update(
+    id: string,
+    fn: (s: StoredSession) => StoredSession | { error: string },
+    timerOf?: (s: StoredSession) => number | null,
+  ) {
     for (let attempt = 0; attempt < 8; attempt++) {
       const raw = await this.redis.get(key(id));
       if (!raw) return { error: 'session_not_found' };
       const next = fn(JSON.parse(raw) as StoredSession);
       if ('error' in next) return next;
       const ttl = next.status === 'finished' ? FINISHED_TTL_S : ACTIVE_TTL_S;
-      const swapped = await this.redis.eval(CAS, 1, key(id), raw, JSON.stringify(next), String(ttl));
+      const timer = timerOf ? timerOf(next) : null;
+      const swapped = await this.redis.eval(
+        CAS,
+        2,
+        key(id),
+        TIMERS,
+        raw,
+        JSON.stringify(next),
+        String(ttl),
+        timer === null ? '' : String(timer),
+        timerOf ? '1' : '0',
+        id,
+      );
       if (swapped === 1) return next;
     }
     return { error: 'contention' };

@@ -40,6 +40,16 @@ describe('content', () => {
     for (const q of TRIVIA_BANK) assert.ok(q.answer < q.choices.length);
     assert.equal(new Set(TRIVIA_BANK.map((q) => q.id)).size, TRIVIA_BANK.length);
     assert.equal(contentFor('four-up', 1), undefined);
+    // Shuffled choices keep the right answer text and spread its position.
+    const positions = new Set<number>();
+    for (let seed = 0; seed < 20; seed++) {
+      for (const q of (contentFor('trivia-burst', seed) as typeof a).questions) {
+        const orig = TRIVIA_BANK.find((b) => b.id === q.id)!;
+        assert.equal(q.choices[q.answer], orig.choices[orig.answer]);
+        positions.add(q.answer);
+      }
+    }
+    assert.equal(positions.size, 4);
   });
 });
 

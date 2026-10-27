@@ -33,15 +33,21 @@ import { DB, withTx, type Db } from '../infra/db.ts';
 import { REDIS } from '../infra/redis.ts';
 import { CLIENTS, type ServiceClients } from '../infra/clients.ts';
 import { CurrentUser, UserGuard, ZodPipe, requireTier, type AuthedUser } from '../common/http.ts';
-import { blockKey, isBlockedBetween, noneBlocked, notBlocked } from './blocks.ts';
+import { blockKey, cacheBlock, isBlockedBetween, noneBlocked, notBlocked } from './blocks.ts';
+import { pairKey } from '../match/match.controller.ts';
 
 const PAGE = 20;
 
-/** Cursor = "<created_at ISO>|<id>", newest first. */
+/**
+ * Cursor = "<created_at with microseconds>|<id>", newest first. The timestamp
+ * comes from Postgres as text: a JS Date would cut it to milliseconds and skip
+ * posts created in the same millisecond.
+ */
+const CURSOR_TS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/;
 function parseCursor(raw?: string): [string, string] | null {
   if (!raw) return null;
   const [at, id] = raw.split('|');
-  if (!at || !id || Number.isNaN(Date.parse(at)) || !/^[0-9a-f-]{36}$/.test(id)) return null;
+  if (!at || !id || !CURSOR_TS.test(at) || !/^[0-9a-f-]{36}$/.test(id)) return null;
   return [at, id];
 }
 
@@ -57,6 +63,7 @@ const VISIBLE = `
 
 const POST_SELECT = `
   SELECT p.*,
+    to_char(p.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_ts,
     (SELECT json_object_agg(kind, n) FROM (SELECT kind, count(*)::int AS n FROM reactions r WHERE r.post_id = p.id GROUP BY kind) k) AS reaction_counts,
     (SELECT kind FROM reactions r WHERE r.post_id = p.id AND r.user_id = $1) AS my_reaction,
     (SELECT count(*)::int FROM comments c WHERE c.post_id = p.id AND c.deleted_at IS NULL) AS comment_count,
@@ -148,6 +155,7 @@ export class SocialController {
   @HttpCode(200)
   async block(@CurrentUser() user: AuthedUser, @Param('userId', ParseUUIDPipe) target: string) {
     if (target === user.id) throw new ForbiddenException({ error: 'cannot_block_self' });
+    let cancelled: Array<{ id: string; venue_id: string }> = [];
     await withTx(this.db, async (tx) => {
       await tx.query('INSERT INTO blocks (blocker, blocked) VALUES ($1, $2) ON CONFLICT DO NOTHING', [user.id, target]);
       await tx.query(
@@ -159,9 +167,25 @@ export class SocialController {
          WHERE state = 'sent' AND ((from_user = $1 AND to_user = $2) OR (from_user = $2 AND to_user = $1))`,
         [user.id, target],
       );
+      // No in-person meet survives a block, even one already under way.
+      cancelled = (
+        await tx.query(
+          `UPDATE bookings b SET state = 'cancelled'
+           FROM venue_slots s
+           WHERE s.id = b.slot_id AND b.state IN ('invited', 'confirmed', 'checked_in')
+             AND ((b.host_id = $1 AND b.guest_id = $2) OR (b.host_id = $2 AND b.guest_id = $1))
+           RETURNING b.id, s.venue_id`,
+          [user.id, target],
+        )
+      ).rows;
     });
+    // Venue staff learn the booking is off (not why); the other player is not told about the block.
+    for (const c of cancelled) {
+      const staff = (await this.db.query('SELECT user_id FROM venue_staff WHERE venue_id = $1', [c.venue_id])).rows.map((r) => r.user_id);
+      await this.clients.notify(staff, RealtimeEvent.bookingUpdate, { bookingId: c.id, state: 'cancelled' });
+    }
     // The matchmaker reads these sets so blocked players never meet in the queue.
-    await this.redis.multi().sadd(blockKey(user.id), target).sadd(blockKey(target), user.id).exec();
+    await cacheBlock(this.redis, user.id, target);
     return { blocked: true };
   }
 
@@ -206,7 +230,7 @@ export class SocialController {
     const last = rows[rows.length - 1];
     return {
       posts: rows.map(toPost),
-      next: rows.length === PAGE && last ? `${last.created_at.toISOString()}|${last.id}` : null,
+      next: rows.length === PAGE && last ? `${last.cursor_ts}|${last.id}` : null,
     };
   }
 
@@ -353,12 +377,18 @@ export class SocialController {
     getRules(s.game_id);
     const other = (s.players as string[]).find((p) => p !== user.id);
     if (!other || (s.players as string[]).length !== 2) throw new ConflictException({ error: 'rematch_1v1_only' });
-    if (await isBlockedBetween(this.db, user.id, other)) throw new NotFoundException({ error: 'not_found' });
+    // Same rule as any challenge: only people you matched with, never across a block.
+    const matched = await this.db.query('SELECT 1 FROM threads WHERE pair_key = $1', [pairKey(user.id, other)]);
+    const active = await this.db.query(`SELECT 1 FROM users WHERE id = $1 AND status = 'active'`, [other]);
+    if (matched.rowCount === 0 || active.rowCount === 0 || (await isBlockedBetween(this.db, user.id, other))) {
+      throw new ForbiddenException({ error: 'not_matched' });
+    }
+    // One rematch offer per game, whatever happened to it: a decline is final.
     const row = (
       await this.db.query(
         `INSERT INTO challenges (from_user, to_user, game_id, rematch_of)
          SELECT $1, $2, $3, $4
-         WHERE NOT EXISTS (SELECT 1 FROM challenges WHERE rematch_of = $4 AND state = 'sent')
+         WHERE NOT EXISTS (SELECT 1 FROM challenges WHERE rematch_of = $4)
          RETURNING *`,
         [user.id, other, s.game_id, id],
       )
