@@ -1,22 +1,24 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
-import { COLS, ROWS, fourUp, mulberry32, replay, type FourUpState } from '../src/index.ts';
+import { COLS, ROWS, fourUp, mulberry32, replayMatch, type FourUpState, type LogEntry } from '../src/index.ts';
+
+const CTX = { now: 0 };
 
 function play(columns: number[]): FourUpState {
-  let s = fourUp.init(1, 2);
+  let s = fourUp.init(1, 2, 0);
   for (const column of columns) {
     const seat = s.turn;
-    const err = fourUp.validate(s, { column }, seat);
+    const err = fourUp.validate(s, { column }, seat, CTX);
     assert.equal(err, null, `move ${column} rejected: ${err}`);
-    s = fourUp.apply(s, { column }, seat);
+    s = fourUp.apply(s, { column }, seat, CTX);
   }
   return s;
 }
 
 describe('four-up rules', () => {
   it('starts empty with seat 0 to move', () => {
-    const s = fourUp.init(42, 2);
-    assert.equal(fourUp.currentSeat(s), 0);
+    const s = fourUp.init(42, 2, 0);
+    assert.deepEqual(fourUp.awaiting(s), [0]);
     assert.equal(s.board.flat().filter((c) => c !== 0).length, 0);
   });
 
@@ -42,14 +44,14 @@ describe('four-up rules', () => {
   });
 
   it('rejects out-of-turn, out-of-range, full-column and post-game moves', () => {
-    const s = fourUp.init(1, 2);
-    assert.equal(fourUp.validate(s, { column: 0 }, 1), 'not_your_turn');
-    assert.equal(fourUp.validate(s, { column: 7 }, 0), 'column_out_of_range');
-    assert.equal(fourUp.validate(s, { col: 1 }, 0), 'bad_move_shape');
+    const s = fourUp.init(1, 2, 0);
+    assert.equal(fourUp.validate(s, { column: 0 }, 1, CTX), 'not_your_turn');
+    assert.equal(fourUp.validate(s, { column: 7 }, 0, CTX), 'column_out_of_range');
+    assert.equal(fourUp.validate(s, { col: 1 }, 0, CTX), 'bad_move_shape');
     const full = play([0, 0, 0, 0, 0, 0]);
-    assert.equal(fourUp.validate(full, { column: 0 }, full.turn), 'column_full');
+    assert.equal(fourUp.validate(full, { column: 0 }, full.turn, CTX), 'column_full');
     const won = play([0, 1, 0, 1, 0, 1, 0]);
-    assert.equal(fourUp.validate(won, { column: 5 }, won.turn), 'game_over');
+    assert.equal(fourUp.validate(won, { column: 5 }, won.turn, CTX), 'game_over');
   });
 
   it('declares a draw on a full board with no line', () => {
@@ -63,22 +65,22 @@ describe('four-up rules', () => {
     assert.equal(s.draw, true);
     assert.equal(s.winner, null);
     assert.deepEqual(fourUp.outcome(s), { done: true, winner: null, draw: true });
-    assert.equal(fourUp.currentSeat(s), null);
+    assert.deepEqual(fourUp.awaiting(s), []);
   });
 
-  it('replays deterministically from a move log', () => {
-    const log = [0, 1, 0, 1, 0, 1, 0].map((column, i) => ({ seat: i % 2, move: { column } }));
-    const a = replay('four-up', 9, 2, log) as FourUpState;
-    const b = replay('four-up', 9, 2, log) as FourUpState;
+  it('replays deterministically from a match log', () => {
+    const log: LogEntry[] = [0, 1, 0, 1, 0, 1, 0].map((column, i) => ({ kind: 'move', seat: i % 2, move: { column }, at: i * 1000 }));
+    const a = replayMatch(fourUp, 9, 2, 0, log);
+    const b = replayMatch(fourUp, 9, 2, 0, log);
     assert.deepEqual(a, b);
-    assert.equal(a.winner, 0);
-    assert.throws(() => replay('four-up', 9, 2, [{ seat: 1, move: { column: 0 } }]), /diverged/);
+    assert.equal((a.state as FourUpState).winner, 0);
+    assert.throws(() => replayMatch(fourUp, 9, 2, 0, [{ kind: 'move', seat: 1, move: { column: 0 }, at: 1 }]), /diverged/);
   });
 
   it('never mutates the previous state', () => {
-    const s0 = fourUp.init(1, 2);
+    const s0 = fourUp.init(1, 2, 0);
     const snapshot = JSON.stringify(s0);
-    fourUp.apply(s0, { column: 3 }, 0);
+    fourUp.apply(s0, { column: 3 }, 0, CTX);
     assert.equal(JSON.stringify(s0), snapshot);
   });
 

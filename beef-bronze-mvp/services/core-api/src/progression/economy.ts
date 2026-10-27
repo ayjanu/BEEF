@@ -9,16 +9,18 @@
  */
 
 export type Level = 1 | 2 | 3 | 4;
-export type Outcome = 'win' | 'draw' | 'loss';
+/** "complete": a finished game with no winner by design (Would You Rather). */
+export type Outcome = 'win' | 'draw' | 'loss' | 'complete';
 export type Chance = 'none' | 'low' | 'high';
 
 export const BASE_BP: Readonly<Record<Level, number>> = { 1: 10, 2: 10, 3: 20, 4: 50 };
-export const OUTCOME_FACTOR: Readonly<Record<Outcome, number>> = { win: 1, draw: 0.6, loss: 0.3 };
+export const OUTCOME_FACTOR: Readonly<Record<Outcome, number>> = { win: 1, draw: 0.6, loss: 0.3, complete: 0 };
 
 /** Verification strength multipliers (Spec 02, "Result verification"). */
 export const STRENGTH = {
   serverAuthoritative: 1.0,
   mutualConfirm: 0, // opinion games pay XP only
+  unrated: 0, // social titles with self-reported answers pay XP only
   captureAiReview: 0.8,
   captureWithReferee: 1.0,
   venueAttest: 1.5,
@@ -65,7 +67,10 @@ export function capForLevel(level: Level): number {
   return DAILY_CAP.levels1and2;
 }
 
-export const XP_FOR: Readonly<Record<Outcome, number>> = { win: 30, draw: 20, loss: 15 };
+export const XP_FOR: Readonly<Record<Outcome, number>> = { win: 30, draw: 20, loss: 15, complete: 20 };
+
+/** Games that ended without anyone playing (both players walked away) pay nothing. */
+export const NO_CONTEST_REASONS: ReadonlySet<string> = new Set(['abandoned']);
 
 /** Level n needs 50 × (n − 1)² XP; capped at level 100. */
 export function levelForXp(xp: number): number {

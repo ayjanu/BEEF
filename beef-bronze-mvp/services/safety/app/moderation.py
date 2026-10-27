@@ -1,4 +1,4 @@
-"""Text moderation for chat, bios, and comments.
+"""Text moderation for chat, bios, comments, and player-written game text.
 
 Bronze ships a deterministic lexicon + pattern provider so every message path
 is wired end to end and testable offline. Silver replaces it with a hosted
@@ -65,8 +65,8 @@ class LexiconProvider:
             return Verdict("block", labels, 0.95)
         if "money_request" in labels:
             return Verdict("block", labels, 0.8)
-        if "personal_info" in labels and context in {"bio", "two_truths"}:
-            # Spec 02: statements in mind games are screened for personal data.
+        if "personal_info" in labels and context in {"bio", "two_truths", "game_text"}:
+            # Spec 02: text in mind games is screened for personal data.
             return Verdict("block", labels, 0.7)
         if labels:
             # Shown behind a "Does this bother you?" interstitial, not removed.

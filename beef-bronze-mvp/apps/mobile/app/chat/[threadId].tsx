@@ -3,7 +3,7 @@ import type { Channel } from 'phoenix';
 import { useEffect, useRef, useState } from 'react';
 import { FlatList, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { useSocket } from '@/realtime';
-import { errorCode, useChallengeMutation, useThreadsQuery } from '@/store/api';
+import { errorCode, useChallengeMutation, useGamesQuery, useThreadsQuery } from '@/store/api';
 import { useAppSelector } from '@/store';
 import { colors, space } from '@/theme';
 import { Body, Button, ErrorText, styles } from '@/ui';
@@ -28,6 +28,9 @@ export default function Chat() {
   const [draft, setDraft] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
+  const games = useGamesQuery();
+  const [gameId, setGameId] = useState('four-up');
+  const gameName = games.data?.find((g) => g.id === gameId)?.name ?? 'Four Up';
   const channel = useRef<Channel | null>(null);
   const [challenge, challengeState] = useChallengeMutation();
 
@@ -61,10 +64,33 @@ export default function Chat() {
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
       {other ? (
         <View style={{ paddingHorizontal: space(2) }}>
+          <FlatList
+            horizontal
+            data={games.data ?? []}
+            keyExtractor={(g) => g.id}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: space(1), paddingVertical: space(1) }}
+            renderItem={({ item }) => (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: item.id === gameId }}
+                onPress={() => setGameId(item.id)}
+                style={{
+                  paddingHorizontal: space(1.5),
+                  paddingVertical: space(0.75),
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: item.id === gameId ? colors.red : colors.border,
+                }}
+              >
+                <Text style={{ color: colors.text }}>{item.name}</Text>
+              </Pressable>
+            )}
+          />
           <Button
-            label={`Challenge ${other.displayName} to Four Up`}
+            label={`Challenge ${other.displayName} to ${gameName}`}
             busy={challengeState.isLoading}
-            onPress={() => void challenge({ toUserId: other.userId, gameId: 'four-up' })}
+            onPress={() => void challenge({ toUserId: other.userId, gameId })}
           />
           {challengeState.isSuccess ? <Body muted>Challenge sent. Squash that beef!</Body> : null}
           <ErrorText code={errorCode(challengeState.error)} />

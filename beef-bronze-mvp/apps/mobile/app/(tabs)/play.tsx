@@ -36,7 +36,9 @@ export default function Play() {
               LEVEL {item.level} · {LEVEL_NAMES[item.level].toUpperCase()}
             </Text>
             <Text style={{ color: colors.text, fontSize: 24, fontWeight: '700', marginVertical: space(0.5) }}>{item.name}</Text>
-            <Body muted>{item.formats.join(', ')} · {item.turnBased ? 'turn-based' : 'real-time'}</Body>
+            <Body muted>
+              {item.formats.join(', ')} · {item.turnBased ? 'turn-based' : 'real-time'} · {item.rated ? 'ranked' : 'just for fun (XP)'}
+            </Body>
             {queuedFor === item.id ? (
               <Button
                 label="Cancel search"
@@ -60,7 +62,7 @@ export default function Play() {
             {queuedFor === item.id ? <Body muted>Now matching you with someone your level…</Body> : null}
           </View>
         )}
-        ListFooterComponent={<Body muted>More titles arrive in Silver: 20 across all four levels (Spec 02).</Body>}
+        ListFooterComponent={<Body muted>Level 2–4 titles (camera-verified and in-person) arrive with Gold.</Body>}
       />
     </Screen>
   );

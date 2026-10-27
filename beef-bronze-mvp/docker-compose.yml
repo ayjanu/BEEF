@@ -81,6 +81,7 @@ services:
       <<: *common
       PORT: "3100"
       CORE_API_URL: http://core-api:3000
+      SAFETY_URL: http://safety:8000
     ports: ["3100:3100"]
     depends_on:
       redis: { condition: service_healthy }

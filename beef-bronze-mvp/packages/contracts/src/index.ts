@@ -161,10 +161,14 @@ export const ResultReport = z.object({
   players: z.array(z.uuid()).min(2),
   winnerSeat: z.number().int().nullable(),
   draw: z.boolean(),
+  /** How it ended: checkmate, timeout, resign, scored, stumped, complete... */
+  reason: z.string().max(40).default('complete'),
+  /** Per-seat scores when the title keeps them (boxes, trivia points, match count). */
+  scores: z.array(z.number()).optional(),
   moveCount: z.number().int().nonnegative(),
   rulesVersion: z.number().int(),
 });
-export type ResultReport = z.infer<typeof ResultReport>;
+export type ResultReport = z.input<typeof ResultReport>;
 
 /** core-api → game-engine to open a session. */
 export const SessionOpen = z.object({
@@ -196,7 +200,11 @@ export type RealtimeEventName = (typeof RealtimeEvent)[keyof typeof RealtimeEven
 export interface GameResultEvent {
   sessionId: string;
   gameId: string;
-  outcome: 'win' | 'loss' | 'draw';
+  /** "complete": a no-winner social game (Would You Rather) or a no-contest. */
+  outcome: 'win' | 'loss' | 'draw' | 'complete';
+  reason: string;
+  /** Whether ratings and leaderboards moved (unrated social titles pay XP only). */
+  rated: boolean;
   xp: number;
   bp: number;
   rating: number;

@@ -7,41 +7,96 @@ import { importSPKI, jwtVerify } from 'jose';
 import { Redis } from 'ioredis';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { loadConfig } from './config.ts';
-import { Engine, type EndedGame, type StoredSession } from './engine.ts';
+import { contentFor } from '@beef/game-rules/content';
+import { Engine, type ActResult, type EndedGame, type ScreenVerdict, type StoredSession } from './engine.ts';
 import { RedisStore } from './redis-store.ts';
 
 const cfg = loadConfig();
 const redis = new Redis(cfg.REDIS_URL, { maxRetriesPerRequest: 3 });
 const sub = redis.duplicate();
 const store = new RedisStore(redis);
-const engine = new Engine(store);
+const log = (msg: string, extra: Record<string, unknown> = {}) =>
+  console.log(JSON.stringify({ t: new Date().toISOString(), svc: 'game-engine', msg, ...extra }));
+
+async function screen(texts: string[], context: string): Promise<ScreenVerdict> {
+  try {
+    const verdicts = await Promise.all(
+      texts.map(async (text) => {
+        const res = await fetch(new URL('/v1/classify/text', cfg.SAFETY_URL), {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-internal-token': cfg.INTERNAL_TOKEN },
+          body: JSON.stringify({ text, context }),
+          signal: AbortSignal.timeout(1500),
+        });
+        if (!res.ok) throw new Error(`safety ${res.status}`);
+        return ((await res.json()) as { action: string }).action;
+      }),
+    );
+    return verdicts.includes('block') ? 'block' : 'allow';
+  } catch (err) {
+    log('safety check unavailable', { error: (err as Error).message });
+    return 'unavailable';
+  }
+}
+
+const engine = new Engine(store, { content: contentFor, screen });
 const publicKey = await importSPKI(cfg.JWT_PUBLIC_KEY, 'ES256');
 const dynamo = DynamoDBDocumentClient.from(
   new DynamoDBClient({ region: cfg.AWS_REGION, ...(cfg.DYNAMODB_ENDPOINT ? { endpoint: cfg.DYNAMODB_ENDPOINT } : {}) }),
 );
 
-const log = (msg: string, extra: Record<string, unknown> = {}) =>
-  console.log(JSON.stringify({ t: new Date().toISOString(), svc: 'game-engine', msg, ...extra }));
-
 // ---------- fan-out: every replica forwards session events to its own sockets ----------
 
-const sockets = new Map<string, Set<WebSocket>>();
+/** Each socket remembers whose eyes it is, so every player gets their own view of hidden information. */
+interface Conn {
+  ws: WebSocket;
+  seat: number;
+}
+const sockets = new Map<string, Set<Conn>>();
 const channel = (id: string) => `ge:evt:${id}`;
 
+/**
+ * Replicas exchange the full session over Redis (internal network only) and
+ * each one renders a per-seat view for its own sockets. Secrets never leave
+ * the cluster before the game ends.
+ */
 await sub.psubscribe('ge:evt:*');
 sub.on('pmessage', (_pattern, ch, message) => {
   const id = ch.slice('ge:evt:'.length);
-  for (const ws of sockets.get(id) ?? []) if (ws.readyState === ws.OPEN) ws.send(message);
+  const conns = sockets.get(id);
+  if (!conns?.size) return;
+  const evt = JSON.parse(message) as { session: StoredSession; ended: Omit<EndedGame, 'session'> | null };
+  for (const c of conns) {
+    if (c.ws.readyState !== c.ws.OPEN) continue;
+    c.ws.send(JSON.stringify({ type: 'state', session: engine.view(evt.session, c.seat) }));
+    if (evt.ended) c.ws.send(JSON.stringify({ type: 'end', ...evt.ended }));
+  }
 });
 
-const publicView = (s: StoredSession) => ({
-  sessionId: s.sessionId,
-  gameId: s.gameId,
-  players: s.players,
-  status: s.status,
-  state: s.state,
-  moves: s.log.length,
-});
+async function broadcast(result: ActResult) {
+  if (!result.ok) return;
+  const { session, ended } = result;
+  const endInfo = ended
+    ? { winnerSeat: ended.winnerSeat, draw: ended.draw, reason: ended.reason, scores: ended.scores }
+    : null;
+  await redis.publish(channel(session.sessionId), JSON.stringify({ session, ended: endInfo }));
+  if (ended) void finish(ended);
+}
+
+// ---------- timers: every replica sweeps; compare-and-set makes double firing harmless ----------
+
+let sweeping = false;
+setInterval(async () => {
+  if (sweeping) return;
+  sweeping = true;
+  try {
+    for (const id of await store.due(Date.now(), 100)) await broadcast(await engine.tick(id));
+  } catch (err) {
+    log('timer sweep failed', { error: (err as Error).message });
+  } finally {
+    sweeping = false;
+  }
+}, cfg.TIMER_SWEEP_MS).unref();
 
 async function finish(ended: EndedGame) {
   const s = ended.session;
@@ -56,8 +111,13 @@ async function finish(ended: EndedGame) {
           rules_version: s.rulesVersion,
           seed: s.seed,
           players: s.players,
-          moves: s.log,
-          resigned_seat: s.resignedSeat,
+          started_at: s.startedAt,
+          // Content (question decks) is part of the evidence: replays must not depend on today's bank.
+          options: s.options ?? null,
+          log: s.log,
+          winner_seat: ended.winnerSeat,
+          draw: ended.draw,
+          reason: ended.reason,
           finished_at: new Date().toISOString(),
         },
       }),
@@ -72,7 +132,9 @@ async function finish(ended: EndedGame) {
     players: s.players,
     winnerSeat: ended.winnerSeat,
     draw: ended.draw,
-    moveCount: s.log.length,
+    reason: ended.reason,
+    scores: ended.scores,
+    moveCount: s.log.filter((e) => e.kind === 'move').length,
     rulesVersion: s.rulesVersion,
   };
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -133,7 +195,7 @@ const server = createServer(async (req, res) => {
       if (!parsed.success) return json(res, 400, { error: 'validation_failed' });
       const s = await engine.open(parsed.data);
       log('session opened', { sessionId: s.sessionId, gameId: s.gameId });
-      return json(res, 201, publicView(s));
+      return json(res, 201, engine.view(s, null));
     }
     json(res, 404, { error: 'not_found' });
   } catch (err) {
@@ -163,10 +225,11 @@ server.on('upgrade', async (req, socket, head) => {
 });
 
 function onConnect(ws: WebSocket, sessionId: string, userId: string, s: StoredSession) {
+  const conn: Conn = { ws, seat: engine.seatOf(s, userId) };
   const set = sockets.get(sessionId) ?? new Set();
-  set.add(ws);
+  set.add(conn);
   sockets.set(sessionId, set);
-  ws.send(JSON.stringify({ type: 'hello', seat: engine.seatOf(s, userId), session: publicView(s) }));
+  ws.send(JSON.stringify({ type: 'hello', seat: conn.seat, session: engine.view(s, conn.seat) }));
 
   let alive = true;
   ws.on('pong', () => (alive = true));
@@ -183,27 +246,19 @@ function onConnect(ws: WebSocket, sessionId: string, userId: string, s: StoredSe
     } catch {
       return ws.send(JSON.stringify({ type: 'error', error: 'bad_json' }));
     }
-    const result =
+    const result: ActResult =
       msg.type === 'move'
         ? await engine.move(sessionId, userId, msg.move)
         : msg.type === 'resign'
           ? await engine.resign(sessionId, userId)
-          : ({ ok: false, error: 'unknown_type' } as const);
+          : { ok: false, error: 'unknown_type' };
     if (!result.ok) return ws.send(JSON.stringify({ type: 'error', error: result.error }));
-    await redis.publish(channel(sessionId), JSON.stringify({ type: 'state', session: publicView(result.session) }));
-    if (result.ended) {
-      const e = result.ended;
-      await redis.publish(
-        channel(sessionId),
-        JSON.stringify({ type: 'end', winnerSeat: e.winnerSeat, draw: e.draw, resignedSeat: e.session.resignedSeat }),
-      );
-      void finish(e);
-    }
+    await broadcast(result);
   });
 
   ws.on('close', () => {
     clearInterval(ping);
-    set.delete(ws);
+    set.delete(conn);
     if (set.size === 0) sockets.delete(sessionId);
   });
 }

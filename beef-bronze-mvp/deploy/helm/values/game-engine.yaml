@@ -2,6 +2,7 @@ name: game-engine
 port: 3100
 env:
   CORE_API_URL: http://core-api:3000
+  SAFETY_URL: http://safety:8000
 ingress:
   enabled: true
   groupOrder: 20

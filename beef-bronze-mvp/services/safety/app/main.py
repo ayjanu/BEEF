@@ -117,7 +117,7 @@ async def readyz(request: Request):
 
 class ClassifyText(BaseModel):
     text: str = Field(max_length=4000)
-    context: Literal["chat", "bio", "comment", "two_truths"] = "chat"
+    context: Literal["chat", "bio", "comment", "two_truths", "game_text"] = "chat"
 
 
 @app.post("/v1/classify/text", dependencies=[Internal])

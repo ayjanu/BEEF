@@ -2,8 +2,13 @@ import type { Redis } from 'ioredis';
 import type { SessionStore, StoredSession } from './engine.ts';
 
 const key = (id: string) => `ge:session:${id}`;
-/** Active sessions live a day; finished ones linger an hour for reconnects and replays. */
-const ACTIVE_TTL_S = 60 * 60 * 24;
+const TIMERS = 'ge:deadlines';
+/**
+ * Active sessions outlive the longest turn timeout (24 h) with margin; every
+ * change refreshes the TTL. Finished ones linger an hour for reconnects; the
+ * durable record is the DynamoDB move log.
+ */
+const ACTIVE_TTL_S = 60 * 60 * 24 * 3;
 const FINISHED_TTL_S = 60 * 60;
 
 /**
@@ -42,5 +47,14 @@ export class RedisStore implements SessionStore {
       if (swapped === 1) return next;
     }
     return { error: 'contention' };
+  }
+
+  async schedule(id: string, at: number | null): Promise<void> {
+    if (at === null) await this.redis.zrem(TIMERS, id);
+    else await this.redis.zadd(TIMERS, at, id);
+  }
+
+  async due(now: number, limit: number): Promise<string[]> {
+    return this.redis.zrangebyscore(TIMERS, '-inf', now, 'LIMIT', 0, limit);
   }
 }
