@@ -42,7 +42,7 @@ services:
       retries: 30
 
   dynamodb:
-    image: public.ecr.aws/aws-dynamodb-local/aws-dynamodb-local:latest
+    image: ${DYNAMODB_IMAGE:-public.ecr.aws/aws-dynamodb-local/aws-dynamodb-local:latest}
     command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-inMemory"]
     ports: ["8001:8000"]
 

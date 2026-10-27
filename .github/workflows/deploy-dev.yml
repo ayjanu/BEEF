@@ -49,7 +49,8 @@ jobs:
       - name: Build and push images (tagged by commit, immutable)
         run: |
           set -euo pipefail
-          build() { docker build -t "$REGISTRY/beef/$1:$TAG" "${@:2}" && docker push "$REGISTRY/beef/$1:$TAG"; }
+          # Base images from Docker Hub: anonymous public.ecr.aws pulls from shared runner IPs hit its data limit.
+          build() { docker build --build-arg BASE_REGISTRY=docker.io/library -t "$REGISTRY/beef/$1:$TAG" "${@:2}" && docker push "$REGISTRY/beef/$1:$TAG"; }
           build core-api    -f deploy/docker/node-service.Dockerfile --build-arg SERVICE=core-api .
           build game-engine -f deploy/docker/node-service.Dockerfile --build-arg SERVICE=game-engine .
           build matchmaking services/matchmaking

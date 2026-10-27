@@ -112,6 +112,11 @@ jobs:
     name: End-to-end, Bronze + Silver (docker compose)
     needs: [node, go, python, elixir]
     runs-on: ubuntu-latest
+    env:
+      # GitHub-hosted runners share IPs, and anonymous pulls from public.ecr.aws hit its data
+      # limit ("toomanyrequests: Data limit exceeded"). Pull the same official images from Docker Hub.
+      BASE_REGISTRY: docker.io/library
+      DYNAMODB_IMAGE: docker.io/amazon/dynamodb-local:latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
