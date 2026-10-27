@@ -5,11 +5,18 @@ name: ci
 
 on:
   pull_request:
+    paths: ["beef-bronze-mvp/**", ".github/workflows/**"]
   push:
     branches: [main]
+    paths: ["beef-bronze-mvp/**", ".github/workflows/**"]
 
 permissions:
   contents: read
+
+# The app lives in beef-bronze-mvp/; every run step starts there.
+defaults:
+  run:
+    working-directory: beef-bronze-mvp
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -22,7 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
-        with: { node-version: 22, cache: npm }
+        with: { node-version: 22, cache: npm, cache-dependency-path: beef-bronze-mvp/package-lock.json }
       - run: npm ci
       - run: npm run build
       - run: npm test
@@ -33,9 +40,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
-        with: { node-version: 22, cache: npm, cache-dependency-path: "**/package-lock.json" }
+        with: { node-version: 22, cache: npm, cache-dependency-path: "beef-bronze-mvp/**/package-lock.json" }
       - run: npm ci && npm run build -w packages/contracts -w packages/game-rules
-      - working-directory: apps/mobile
+      - working-directory: beef-bronze-mvp/apps/mobile
         run: |
           npm ci
           npx tsc --noEmit
@@ -45,11 +52,11 @@ jobs:
   go:
     name: Go (matchmaking)
     runs-on: ubuntu-latest
-    defaults: { run: { working-directory: services/matchmaking } }
+    defaults: { run: { working-directory: beef-bronze-mvp/services/matchmaking } }
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
-        with: { go-version-file: services/matchmaking/go.mod }
+        with: { go-version-file: beef-bronze-mvp/services/matchmaking/go.mod }
       - run: test -z "$(gofmt -l .)"
       - run: go vet ./...
       - run: go test -race ./...
@@ -57,7 +64,7 @@ jobs:
   python:
     name: Python (safety)
     runs-on: ubuntu-latest
-    defaults: { run: { working-directory: services/safety } }
+    defaults: { run: { working-directory: beef-bronze-mvp/services/safety } }
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -68,7 +75,7 @@ jobs:
   elixir:
     name: Elixir (chat)
     runs-on: ubuntu-latest
-    defaults: { run: { working-directory: services/chat } }
+    defaults: { run: { working-directory: beef-bronze-mvp/services/chat } }
     env: { MIX_ENV: test }
     steps:
       - uses: actions/checkout@v7
@@ -108,7 +115,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
-        with: { node-version: 22, cache: npm }
+        with: { node-version: 22, cache: npm, cache-dependency-path: beef-bronze-mvp/package-lock.json }
       - run: npm ci
       - run: npm run keys:dev
       - run: docker compose up -d --build --wait --wait-timeout 300 postgres redis dynamodb

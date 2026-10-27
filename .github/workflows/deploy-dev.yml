@@ -19,6 +19,10 @@ permissions:
   id-token: write # OIDC token for AWS
   contents: read
 
+defaults:
+  run:
+    working-directory: beef-bronze-mvp
+
 concurrency:
   group: deploy-dev
   cancel-in-progress: false
@@ -69,7 +73,7 @@ jobs:
           done
 
       - uses: actions/setup-node@v7
-        with: { node-version: 22, cache: npm }
+        with: { node-version: 22, cache: npm, cache-dependency-path: beef-bronze-mvp/package-lock.json }
 
       - name: End-to-end test against AWS dev
         env:
