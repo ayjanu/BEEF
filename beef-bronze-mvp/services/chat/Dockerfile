@@ -6,6 +6,10 @@ ARG BASE_REGISTRY=public.ecr.aws/docker/library
 FROM ${BASE_REGISTRY}/elixir:1.18-otp-27-slim AS build
 ENV MIX_ENV=prod
 WORKDIR /app
+# The slim image ships no CA bundle; without it Mix cannot verify hex.pm over HTTPS.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 COPY mix.exs mix.lock ./
 RUN --mount=type=secret,id=extra_ca,required=false \
     if [ -s /run/secrets/extra_ca ]; then export HEX_CACERTS_PATH=/run/secrets/extra_ca SSL_CERT_FILE=/run/secrets/extra_ca; fi; \
