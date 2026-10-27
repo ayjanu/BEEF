@@ -31,10 +31,11 @@ export interface GameManifest {
   /**
    * How the result is verified (Spec 02, "Result verification"):
    * "server" — the server decides the result from the rules;
-   * "mutual" — no objective winner (players finish it together).
-   * Beef Points are paid only for rated, server-verified results; everything else pays XP.
+   * "mutual" — no objective winner (players finish it together);
+   * "venue" — in person; partner-venue staff check players in and attest the result.
+   * Beef Points are paid only for rated, server- or venue-verified results; everything else pays XP.
    */
-  verification: 'server' | 'mutual';
+  verification: 'server' | 'mutual' | 'venue';
   /** Moves contain free text from players, which the engine screens with the safety service. */
   userText: boolean;
   /**

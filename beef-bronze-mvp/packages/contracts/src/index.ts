@@ -210,6 +210,123 @@ export const SocialCounts = z.object({
 });
 export type SocialCounts = z.infer<typeof SocialCounts>;
 
+// ---------- Level 4: venues, bookings, check-in (no money moves) ----------
+
+export const Venue = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  address: z.string(),
+  city: z.string(),
+  lat: z.number(),
+  lng: z.number(),
+  games: z.array(z.string()),
+  safeCertified: z.boolean(),
+});
+export type Venue = z.infer<typeof Venue>;
+
+export const VenueCreateRequest = z.object({
+  name: z.string().trim().min(2).max(80),
+  address: z.string().trim().min(5).max(200),
+  city: z.string().trim().min(2).max(80),
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+  timezone: z.string().default('America/Chicago'),
+  games: z.array(GameId).min(1).max(20),
+  safeCertified: z.boolean().default(false),
+  /** The venue's first staff account (owner), an existing BEEF user. */
+  ownerUserId: z.uuid(),
+});
+export type VenueCreateRequest = z.input<typeof VenueCreateRequest>;
+
+export const SlotCreateRequest = z.object({
+  gameId: GameId,
+  startsAt: z.iso.datetime({ offset: true }),
+  endsAt: z.iso.datetime({ offset: true }),
+  capacity: z.number().int().min(1).max(50),
+});
+export type SlotCreateRequest = z.infer<typeof SlotCreateRequest>;
+
+export const VenueSlot = z.object({
+  id: z.uuid(),
+  venueId: z.uuid(),
+  gameId: z.string(),
+  startsAt: z.string(),
+  endsAt: z.string(),
+  capacity: z.number().int(),
+  available: z.number().int(),
+});
+export type VenueSlot = z.infer<typeof VenueSlot>;
+
+export const BookingCreateRequest = z.object({
+  slotId: z.uuid(),
+  /** Someone you have matched with. They must accept before the booking holds a table. */
+  guestId: z.uuid(),
+  /** Share the meet plan (who, where, when) with your emergency contacts. */
+  sharePlan: z.boolean().default(false),
+});
+export type BookingCreateRequest = z.input<typeof BookingCreateRequest>;
+
+export const BookingAcceptRequest = z.object({ sharePlan: z.boolean().default(false) });
+export type BookingAcceptRequest = z.input<typeof BookingAcceptRequest>;
+
+export const BookingState = z.enum(['invited', 'confirmed', 'checked_in', 'completed', 'cancelled', 'no_show']);
+
+export const Booking = z.object({
+  id: z.uuid(),
+  state: BookingState,
+  venue: Venue,
+  slot: VenueSlot.omit({ available: true }),
+  hostId: z.uuid(),
+  guestId: z.uuid(),
+  hostCheckedIn: z.boolean(),
+  guestCheckedIn: z.boolean(),
+  sessionId: z.uuid().nullable(),
+});
+export type Booking = z.infer<typeof Booking>;
+
+/** What a player's QR code carries: a 2-minute signed token, re-issued while the screen is open. */
+export const CheckinToken = z.object({ token: z.string(), expiresAt: z.string() });
+export type CheckinToken = z.infer<typeof CheckinToken>;
+
+export const CheckinRequest = z.object({ token: z.string().min(20).max(2000) });
+export type CheckinRequest = z.infer<typeof CheckinRequest>;
+
+export const VenueResultRequest = z.object({
+  winnerUserId: z.uuid().nullable(),
+  draw: z.boolean().default(false),
+  /** Host score first, then guest, for score-kept titles (bowling, table tennis). */
+  scores: z.array(z.number().int().min(0).max(10_000)).length(2).optional(),
+});
+export type VenueResultRequest = z.input<typeof VenueResultRequest>;
+
+/** Shield button (Spec 04). "ok" also answers the start and end check-in prompts. */
+export const SafetyEventRequest = z.object({
+  kind: z.enum(['ok', 'get_me_out', 'alert_contacts', 'emergency']),
+});
+export type SafetyEventRequest = z.infer<typeof SafetyEventRequest>;
+
+export const MeetFeedbackRequest = z.object({ feltSafe: z.boolean() });
+export type MeetFeedbackRequest = z.infer<typeof MeetFeedbackRequest>;
+
+export const EmergencyContactsRequest = z.object({
+  contacts: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1).max(60),
+        phone: z.string().regex(/^\+[1-9]\d{7,14}$/, 'phone must be E.164'),
+      }),
+    )
+    .max(3),
+});
+export type EmergencyContactsRequest = z.infer<typeof EmergencyContactsRequest>;
+
+export const StaffFlagRequest = z.object({
+  userId: z.uuid(),
+  bookingId: z.uuid(),
+  note: z.string().trim().min(3).max(1000),
+});
+export type StaffFlagRequest = z.infer<typeof StaffFlagRequest>;
+
 // ---------- safety ----------
 
 export const ReportCreateRequest = z.object({
@@ -261,6 +378,10 @@ export type MatchFound = z.infer<typeof MatchFound>;
 export const RealtimeEvent = {
   mutualMatch: 'mutual_match',
   challengeReceived: 'challenge_received',
+  bookingInvite: 'booking_invite',
+  bookingUpdate: 'booking_update',
+  /** Start/end-of-meet "Are you OK?" prompt (Spec 04). */
+  safetyCheck: 'safety_check',
   matchFound: 'match_found',
   gameResult: 'game_result',
 } as const;

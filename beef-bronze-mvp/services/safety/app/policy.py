@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 # category -> severity
 SEVERITY: dict[str, str] = {
     "minor": "critical",
+    # Level 4 Shield "Emergency", or no answer to the end-of-meet check-in (Spec 04).
+    "in_person": "critical",
     "threat": "high",
     "ncii": "high",
     "harassment": "medium",

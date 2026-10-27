@@ -91,16 +91,23 @@ export class ProfilesController {
   }
 
   /**
-   * Dev stub for the V1 selfie-liveness check. Local/dev only; Silver replaces
-   * it with the identity vendor's webhook, which is the only path that can raise a tier.
+   * Dev stub for identity verification. Local/dev only: grants V1 (selfie
+   * liveness) by default, or the tier in the body (V2 ID check, V3 screening)
+   * so Level 4 can be exercised. In staging and prod the identity vendor's
+   * webhook is the only path that can raise a tier. Never lowers a tier.
    */
   @Post('me/verify/liveness')
   @HttpCode(200)
-  async devLiveness(@CurrentUser() user: AuthedUser): Promise<{ tier: string; token: string }> {
+  async devLiveness(
+    @CurrentUser() user: AuthedUser,
+    @Body() body?: { tier?: string },
+  ): Promise<{ tier: string; token: string }> {
     if (this.cfg.APP_ENV !== 'local' && this.cfg.APP_ENV !== 'dev') {
       throw new ForbiddenException({ error: 'use_identity_vendor' });
     }
-    await this.db.query(`UPDATE users SET tier = 'V1' WHERE id = $1 AND tier = 'V0'`, [user.id]);
+    const want = body?.tier ?? 'V1';
+    if (!['V1', 'V2', 'V3'].includes(want)) throw new ForbiddenException({ error: 'bad_tier' });
+    await this.db.query(`UPDATE users SET tier = $2 WHERE id = $1 AND tier < $2`, [user.id, want]);
     const tier = (await this.db.query('SELECT tier FROM users WHERE id = $1', [user.id])).rows[0].tier;
     return { tier, token: await this.tokens.sign(user.id, tier) };
   }

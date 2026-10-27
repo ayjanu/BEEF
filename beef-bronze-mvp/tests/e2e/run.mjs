@@ -21,6 +21,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand } from '@aws-sdk/lib-dynamodb';
 import { Socket } from 'phoenix';
 import { getRules, replayMatch } from '@beef/game-rules';
+import { existsSync, readFileSync } from 'node:fs';
 
 const CORE = process.env.CORE_URL ?? 'http://localhost:3000';
 const GAME_WS = process.env.GAME_WS_URL ?? 'ws://localhost:3100';
@@ -32,6 +33,11 @@ const MOVE_LOG_TABLE = process.env.MOVE_LOG_TABLE ?? 'beef-local-move-logs';
 // Remote mode (AWS): only public ALB routes are reachable, so direct readiness
 // probes and the DynamoDB read are skipped; everything else runs unchanged.
 const REMOTE = process.env.E2E_REMOTE === '1';
+// Venue onboarding is an internal (ops) API. Locally the token comes from the stack's .env.
+const ENV_FILE = new URL('../../.env', import.meta.url);
+const INTERNAL_TOKEN =
+  process.env.INTERNAL_TOKEN ??
+  (existsSync(ENV_FILE) ? /^INTERNAL_TOKEN=(.*)$/m.exec(readFileSync(ENV_FILE, 'utf8'))?.[1]?.trim() : undefined);
 
 let passed = 0;
 async function step(name, fn) {
@@ -80,7 +86,7 @@ function chatConnect(user) {
   user.socket = socket;
   user.events = [];
   const ch = socket.channel(`user:${user.id}`);
-  for (const ev of ['mutual_match', 'challenge_received', 'match_found', 'game_result']) {
+  for (const ev of ['mutual_match', 'challenge_received', 'match_found', 'game_result', 'booking_invite', 'booking_update', 'safety_check']) {
     ch.on(ev, (payload) => user.events.push({ ev, payload }));
   }
   return join(ch);
@@ -506,6 +512,98 @@ await step('feed pages with a stable cursor', async () => {
     pages++;
   } while (next && pages < 10);
   assert(pages >= 2 && ids.size >= 22, `paged ${ids.size} posts over ${pages} pages`);
+});
+
+
+await step('Level 4: V3 + certified venue rules, QR check-in by staff, attested result, Shield, prompts', async () => {
+  if (REMOTE || !INTERNAL_TOKEN) {
+    console.log('    (skipped: needs the internal token to onboard a venue)');
+    return;
+  }
+  // Venue staff member.
+  const dana = { phone: `+1214${runId}06` };
+  await api('POST', '/v1/auth/otp/start', null, { phone: dana.phone });
+  Object.assign(dana, (await api('POST', '/v1/auth/otp/verify', null, { phone: dana.phone, code: OTP })).data);
+  await api('PUT', '/v1/me/profile', dana.token, { displayName: 'Dana', birthDate: '1990-05-05', intents: ['platonic'] });
+
+  const onboard = async (body) => {
+    const res = await fetch(`${CORE}/internal/venues`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-internal-token': INTERNAL_TOKEN },
+      body: JSON.stringify({ city: 'Dallas', lat: 32.78, lng: -96.8, ownerUserId: dana.userId, ...body }),
+    });
+    assert(res.status === 201, `venue onboarding ${res.status}`);
+    return res.json();
+  };
+  const certified = await onboard({ name: 'Pin Palace', address: '100 Elm St', games: ['bowling', 'pool-8-ball'], safeCertified: true });
+  const corner = await onboard({ name: 'Corner Bar', address: '200 Main St', games: ['darts-501'] });
+  const listed = (await api('GET', '/v1/venues?game=bowling', alex.token)).data;
+  assert(listed.length === 1 && listed[0].id === certified.id, 'venues filter by game');
+
+  const soon = (s) => new Date(Date.now() + s * 1000).toISOString();
+  const slot = (await api('POST', `/v1/venues/${certified.id}/slots`, dana.token, { gameId: 'bowling', startsAt: soon(25), endsAt: soon(3600), capacity: 2 })).data;
+  const cornerSlot = (await api('POST', `/v1/venues/${corner.id}/slots`, dana.token, { gameId: 'darts-501', startsAt: soon(7200), endsAt: soon(9000), capacity: 1 })).data;
+  await api('POST', `/v1/venues/${certified.id}/slots`, alex.token, { gameId: 'bowling', startsAt: soon(60), endsAt: soon(600), capacity: 1 }, [403]);
+
+  // Both players must be V3.
+  const v1 = await api('POST', '/v1/bookings', alex.token, { slotId: slot.id, guestId: blair.id }, [403]);
+  assert(v1.data.error === 'verification_required' && v1.data.need === 'V3', 'host needs V3');
+  alex.token = (await api('POST', '/v1/me/verify/liveness', alex.token, { tier: 'V3' })).data.token;
+  const guestTier = await api('POST', '/v1/bookings', alex.token, { slotId: slot.id, guestId: blair.id }, [403]);
+  assert(guestTier.data.error === 'opponent_not_verified', 'guest needs V3 too');
+  blair.token = (await api('POST', '/v1/me/verify/liveness', blair.token, { tier: 'V3' })).data.token;
+
+  const uncert = await api('POST', '/v1/bookings', alex.token, { slotId: cornerSlot.id, guestId: blair.id }, [403]);
+  assert(uncert.data.error === 'certified_venue_required', 'first meets only at certified venues');
+
+  const booking = (await api('POST', '/v1/bookings', alex.token, { slotId: slot.id, guestId: blair.id, sharePlan: true })).data;
+  assert(booking.state === 'invited' && booking.venue.name === 'Pin Palace', 'booking invites the guest');
+  await waitFor(eventOf(blair, 'booking_invite', (p) => p.id === booking.id), 'booking_invite push');
+  await api('PUT', '/v1/me/emergency-contacts', blair.token, { contacts: [{ name: 'Sam', phone: '+12145550199' }] });
+  const confirmed = (await api('POST', `/v1/bookings/${booking.id}/accept`, blair.token, { sharePlan: true })).data;
+  assert(confirmed.state === 'confirmed', 'guest accepted');
+  const slots = (await api('GET', `/v1/venues/${certified.id}/slots`, alex.token)).data;
+  assert(slots.find((s) => s.id === slot.id).available === 1, 'one table left');
+
+  // QR check-in: only staff can scan; tokens are signed, single-purpose, and short-lived.
+  const qrA = (await api('GET', `/v1/bookings/${booking.id}/checkin-token`, alex.token)).data;
+  const qrB = (await api('GET', `/v1/bookings/${booking.id}/checkin-token`, blair.token)).data;
+  await api('POST', `/v1/venues/${certified.id}/checkins`, casey.token, { token: qrA.token }, [403]);
+  const forged = await api('POST', `/v1/venues/${certified.id}/checkins`, dana.token, { token: alex.token }, [400]);
+  assert(forged.data.error === 'invalid_or_expired_code', 'an access token is not a check-in code');
+  const wrongVenue = await api('POST', `/v1/venues/${corner.id}/checkins`, dana.token, { token: qrA.token }, [400]);
+  assert(wrongVenue.data.error === 'wrong_venue', 'codes only work at the booked venue');
+  const early = await api('POST', `/v1/venues/${certified.id}/bookings/${booking.id}/result`, dana.token, { winnerUserId: blair.id, scores: [150, 182] }, [409]);
+  assert(early.data.error === 'both_players_must_check_in', 'no result before both check in');
+  const one = (await api('POST', `/v1/venues/${certified.id}/checkins`, dana.token, { token: qrA.token })).data;
+  assert(one.hostCheckedIn && !one.guestCheckedIn && one.checkedIn.displayName === 'Alex', 'host checked in');
+  const both = (await api('POST', `/v1/venues/${certified.id}/checkins`, dana.token, { token: qrB.token })).data;
+  assert(both.state === 'checked_in', 'both checked in');
+
+  // Attested result: strongest verification, posts to the feed.
+  const noScores = await api('POST', `/v1/venues/${certified.id}/bookings/${booking.id}/result`, dana.token, { winnerUserId: blair.id }, [400]);
+  assert(noScores.data.error === 'scores_required', 'bowling needs scores');
+  const res = (await api('POST', `/v1/venues/${certified.id}/bookings/${booking.id}/result`, dana.token, { winnerUserId: blair.id, scores: [150, 182] })).data;
+  const blairEv = res.events[1];
+  assert(blairEv.outcome === 'win' && blairEv.rated && blairEv.reason === 'venue_attested' && blairEv.ratingDelta > 0, `attested ${JSON.stringify(blairEv)}`);
+  const again = await api('POST', `/v1/venues/${certified.id}/bookings/${booking.id}/result`, dana.token, { winnerUserId: alex.id, scores: [200, 100] }, [409]);
+  assert(again.data.error === 'already_recorded', 'a result is attested once');
+  const feed = (await api('GET', '/v1/feed', alex.token)).data;
+  const card = feed.posts.find((p) => p.sessionId === res.sessionId);
+  assert(card && card.gameName === 'Bowling' && card.scores.join() === '150,182', 'venue result card');
+  const lb = (await api('GET', '/v1/leaderboards/bowling', alex.token)).data;
+  assert(lb[0].userId === blair.id, 'venue leaderboard');
+
+  // Shield and private feedback.
+  const out = (await api('POST', `/v1/bookings/${booking.id}/safety`, blair.token, { kind: 'get_me_out' })).data;
+  assert(out.actions.includes('venue_staff_notified'), 'staff told discreetly');
+  const alert = (await api('POST', `/v1/bookings/${booking.id}/safety`, blair.token, { kind: 'alert_contacts' })).data;
+  assert(alert.actions.includes('contacts_alerted:1'), 'emergency contact alerted');
+  await api('POST', `/v1/bookings/${booking.id}/safety`, casey.token, { kind: 'ok' }, [404]);
+  await api('POST', `/v1/bookings/${booking.id}/feedback`, alex.token, { feltSafe: true });
+
+  // The sweeper sends the "Are you OK?" prompt when the slot starts.
+  await waitFor(eventOf(alex, 'safety_check', (p) => p.bookingId === booking.id && p.phase === 'start'), 'start-of-meet prompt', 40_000);
 });
 
 await step('outsiders cannot open someone else’s game socket; internal APIs need the service token', async () => {

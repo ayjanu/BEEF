@@ -87,6 +87,11 @@ const MESSAGES: Record<string, string> = {
   safety_unavailable: 'We couldn’t check that just now. Try again in a moment.',
   rematch_already_offered: 'You already asked for a rematch.',
   not_found: 'That’s no longer available.',
+  certified_venue_required: 'Your first two meets with someone happen at Safe-Beef Certified venues.',
+  opponent_not_verified: 'They need to finish verification before meeting in person.',
+  slot_full: 'That time is fully booked.',
+  checkin_not_open: 'Check-in opens 30 minutes before your time.',
+  already_booked_then: 'One of you already has a booking at that time.',
 };
 
 export const styles = StyleSheet.create({

@@ -131,9 +131,11 @@ async def classify_text(body: ClassifyText, p: Annotated[TextModerationProvider,
 
 class ReportIn(BaseModel):
     reporterId: uuid.UUID
-    subjectType: Literal["user", "message", "media", "session"]
+    subjectType: Literal["user", "message", "media", "session", "booking"]
     subjectId: str = Field(min_length=1, max_length=200)
-    category: Literal["harassment", "hate", "sexual", "threat", "minor", "ncii", "cheating", "spam", "other"]
+    category: Literal[
+        "harassment", "hate", "sexual", "threat", "minor", "ncii", "cheating", "spam", "other", "in_person"
+    ]
     details: str = Field(default="", max_length=2000)
 
 

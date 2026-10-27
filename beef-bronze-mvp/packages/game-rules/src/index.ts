@@ -4,7 +4,8 @@ import { fourUp } from './four-up.ts';
 import { triviaBurst } from './trivia-burst.ts';
 import { twentyQuestions } from './twenty-questions.ts';
 import { twoTruths } from './two-truths.ts';
-import type { AnyGameRules } from './types.ts';
+import type { AnyGameRules, GameManifest } from './types.ts';
+import { venueGames } from './venue-games.ts';
 import { wouldYouRather } from './would-you-rather.ts';
 
 export * from './types.ts';
@@ -16,6 +17,7 @@ export * from './trivia-burst.ts';
 export * from './would-you-rather.ts';
 export * from './two-truths.ts';
 export * from './twenty-questions.ts';
+export * from './venue-games.ts';
 export { mulberry32 } from './rng.ts';
 export { drawDeck } from './rounds.ts';
 
@@ -42,4 +44,11 @@ export function getRules(gameId: string): AnyGameRules {
   const rules = registry[gameId];
   if (!rules) throw new Error(`unknown game: ${gameId}`);
   return rules;
+}
+
+/** Manifest of any title: engine-hosted or played at a venue. */
+export function getManifest(gameId: string): GameManifest {
+  const m = registry[gameId]?.manifest ?? venueGames[gameId];
+  if (!m) throw new Error(`unknown game: ${gameId}`);
+  return m;
 }

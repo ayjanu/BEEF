@@ -3,8 +3,15 @@ import type {
   AuthResult,
   Challenge,
   ChallengeCreateRequest,
+  Booking,
+  BookingCreateRequest,
+  CheckinToken,
   Comment,
+  EmergencyContactsRequest,
   FeedPage,
+  SafetyEventRequest,
+  Venue,
+  VenueSlot,
   FeedPost,
   ReactionKind,
   SocialCounts,
@@ -39,7 +46,7 @@ export const api = createApi({
       return headers;
     },
   }),
-  tagTypes: ['Me', 'Deck', 'Threads', 'Challenges', 'Wallet', 'Leaderboard', 'Sessions', 'Feed', 'Comments', 'Social'],
+  tagTypes: ['Me', 'Deck', 'Threads', 'Challenges', 'Wallet', 'Leaderboard', 'Sessions', 'Feed', 'Comments', 'Social', 'Bookings'],
   endpoints: (b) => ({
     otpStart: b.mutation<{ sent: boolean }, OtpStartRequest>({
       query: (body) => ({ url: '/v1/auth/otp/start', method: 'POST', body }),
@@ -135,6 +142,32 @@ export const api = createApi({
       query: (sessionId) => ({ url: `/v1/sessions/${sessionId}/rematch`, method: 'POST' }),
       invalidatesTags: ['Challenges'],
     }),
+    // ---------- Level 4 ----------
+    venues: b.query<Venue[], string | void>({ query: (game) => (game ? `/v1/venues?game=${game}` : '/v1/venues') }),
+    venueSlots: b.query<VenueSlot[], string>({ query: (venueId) => `/v1/venues/${venueId}/slots`, providesTags: ['Bookings'] }),
+    bookings: b.query<Booking[], void>({ query: () => '/v1/bookings', providesTags: ['Bookings'] }),
+    book: b.mutation<Booking, BookingCreateRequest>({
+      query: (body) => ({ url: '/v1/bookings', method: 'POST', body }),
+      invalidatesTags: ['Bookings'],
+    }),
+    acceptBooking: b.mutation<Booking, { id: string; sharePlan: boolean }>({
+      query: ({ id, sharePlan }) => ({ url: `/v1/bookings/${id}/accept`, method: 'POST', body: { sharePlan } }),
+      invalidatesTags: ['Bookings'],
+    }),
+    cancelBooking: b.mutation<Booking, string>({
+      query: (id) => ({ url: `/v1/bookings/${id}/cancel`, method: 'POST' }),
+      invalidatesTags: ['Bookings'],
+    }),
+    checkinToken: b.query<CheckinToken, string>({ query: (id) => `/v1/bookings/${id}/checkin-token`, keepUnusedDataFor: 0 }),
+    shield: b.mutation<{ recorded: boolean; actions: string[] }, { id: string } & SafetyEventRequest>({
+      query: ({ id, kind }) => ({ url: `/v1/bookings/${id}/safety`, method: 'POST', body: { kind } }),
+    }),
+    meetFeedback: b.mutation<{ recorded: boolean }, { id: string; feltSafe: boolean }>({
+      query: ({ id, feltSafe }) => ({ url: `/v1/bookings/${id}/feedback`, method: 'POST', body: { feltSafe } }),
+    }),
+    emergencyContacts: b.mutation<unknown, EmergencyContactsRequest>({
+      query: (body) => ({ url: '/v1/me/emergency-contacts', method: 'PUT', body }),
+    }),
     report: b.mutation<{ id: string }, ReportCreateRequest>({
       query: (body) => ({ url: '/v1/reports', method: 'POST', body }),
     }),
@@ -169,6 +202,16 @@ export const {
   useFollowMutation,
   useBlockMutation,
   useRematchMutation,
+  useVenuesQuery,
+  useVenueSlotsQuery,
+  useBookingsQuery,
+  useBookMutation,
+  useAcceptBookingMutation,
+  useCancelBookingMutation,
+  useCheckinTokenQuery,
+  useShieldMutation,
+  useMeetFeedbackMutation,
+  useEmergencyContactsMutation,
 } = api;
 
 /** Pulls the server's error code out of an RTK Query error, for user-facing messages. */

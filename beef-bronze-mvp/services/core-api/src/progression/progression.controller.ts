@@ -1,5 +1,5 @@
 import { BadRequestException, Controller, Get, Inject, Param, UseGuards } from '@nestjs/common';
-import { registry } from '@beef/game-rules';
+import { registry, venueGames } from '@beef/game-rules';
 import type { LeaderboardEntry, Wallet } from '@beef/contracts';
 import type { Redis } from 'ioredis';
 import { DB, type Db } from '../infra/db.ts';
@@ -35,7 +35,7 @@ export class ProgressionController {
   /** Top 50 for a game. Served from a Redis sorted set; names joined from Postgres. */
   @Get('leaderboards/:gameId')
   async leaderboard(@Param('gameId') gameId: string): Promise<LeaderboardEntry[]> {
-    if (!registry[gameId]) throw new BadRequestException({ error: 'unknown_game' });
+    if (!registry[gameId] && !venueGames[gameId]) throw new BadRequestException({ error: 'unknown_game' });
     const flat = await this.redis.zrevrange(leaderboardKey(gameId), 0, 49, 'WITHSCORES');
     const ids: string[] = [];
     const scores: number[] = [];

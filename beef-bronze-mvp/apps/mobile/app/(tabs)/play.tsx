@@ -62,7 +62,13 @@ export default function Play() {
             {queuedFor === item.id ? <Body muted>Now matching you with someone your level…</Body> : null}
           </View>
         )}
-        ListFooterComponent={<Body muted>Level 2–4 titles (camera-verified and in-person) arrive with Gold.</Body>}
+        ListFooterComponent={
+          <View style={styles.card}>
+            <Text style={{ color: colors.red, fontSize: 13 }}>LEVEL 4 · BEEF!</Text>
+            <Body>Settle it in person: pool, darts, bowling and more at partner venues.</Body>
+            <Button label="Find a venue" kind="ghost" onPress={() => router.push('/in-person')} />
+          </View>
+        }
       />
     </Screen>
   );

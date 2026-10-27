@@ -36,6 +36,8 @@ function Root() {
         <Stack.Screen name="chat/[threadId]" options={{ title: 'Beef' }} />
         <Stack.Screen name="game/[sessionId]" options={{ title: 'Game', gestureEnabled: false }} />
         <Stack.Screen name="post/[postId]" options={{ title: 'Beef' }} />
+        <Stack.Screen name="in-person" options={{ title: 'In person' }} />
+        <Stack.Screen name="meet/[bookingId]" options={{ title: 'Meet', gestureEnabled: false }} />
       </Stack>
     </RealtimeProvider>
   );

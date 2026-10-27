@@ -17,7 +17,7 @@ import {
   UnprocessableEntityException,
   UseGuards,
 } from '@nestjs/common';
-import { getRules, registry } from '@beef/game-rules';
+import { getRules, registry, venueGames } from '@beef/game-rules';
 import {
   CommentCreateRequest,
   RealtimeEvent,
@@ -77,7 +77,7 @@ function toPost(r: Record<string, any>): FeedPost {
     kind: r.kind,
     sessionId: r.session_id,
     gameId: r.game_id,
-    gameName: registry[r.game_id]?.manifest.name ?? r.game_id,
+    gameName: (registry[r.game_id]?.manifest ?? venueGames[r.game_id])?.name ?? r.game_id,
     players: (r.players as string[]).map((userId, i) => ({
       userId,
       displayName: r.names?.[userId] ?? 'Player',

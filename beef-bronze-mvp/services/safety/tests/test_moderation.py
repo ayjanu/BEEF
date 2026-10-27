@@ -40,6 +40,7 @@ def test_off_platform_push_is_blurred():
 
 def test_report_severity_and_clocks():
     assert severity_for("minor") == "critical"
+    assert severity_for("in_person") == "critical"
     assert severity_for("ncii") == "high"
     assert severity_for("unknown-category") == "low"
     t0 = datetime(2026, 10, 26, tzinfo=timezone.utc)

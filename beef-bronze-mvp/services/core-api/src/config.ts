@@ -24,6 +24,8 @@ const Env = z.object({
   SAFETY_URL: z.url(),
   DEFAULT_REGION: z.string().default('dfw'),
   FREE_DAILY_RIGHT_SWIPES: z.coerce.number().int().default(50),
+  /** How often Level 4 check-in prompts and escalations run. */
+  SAFETY_SWEEP_MS: z.coerce.number().int().min(1000).default(30_000),
 });
 
 export type Config = z.infer<typeof Env>;

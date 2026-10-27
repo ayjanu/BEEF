@@ -70,6 +70,8 @@ services:
       MATCHMAKING_URL: http://matchmaking:8080
       CHAT_URL: http://chat:4000
       SAFETY_URL: http://safety:8000
+      # Fast Level 4 check-in prompts for local testing (default 30 s).
+      SAFETY_SWEEP_MS: "2000"
     ports: ["3000:3000"]
     depends_on:
       postgres: { condition: service_healthy }

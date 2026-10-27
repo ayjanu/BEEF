@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { getRules } from '@beef/game-rules';
+import { getManifest } from '@beef/game-rules';
 import { RealtimeEvent, type GameResultEvent, type ResultReport } from '@beef/contracts';
 import type { Redis } from 'ioredis';
 import { DB, withTx, type Db, type Tx } from '../infra/db.ts';
@@ -12,6 +12,7 @@ import {
   XP_FOR,
   applyDailyCap,
   bpForResult,
+  DAILY_CAP,
   capForLevel,
   type Level,
   type Outcome,
@@ -48,8 +49,16 @@ export class ResultsService {
     return r ? { rating: r.rating, rd: r.rd, vol: r.vol } : { ...DEFAULT_RATING };
   }
 
-  async record(report: ResultReport): Promise<{ recorded: boolean; events: GameResultEvent[] }> {
-    const rules = getRules(report.gameId);
+  /**
+   * `visit` scopes Level 4 caps to one venue visit (Spec 02: 300 BP per visit)
+   * instead of the calendar day.
+   */
+  async record(
+    report: ResultReport,
+    visit?: { bookingId: string },
+  ): Promise<{ recorded: boolean; events: GameResultEvent[] }> {
+    const manifest = getManifest(report.gameId);
+    const rules = { manifest };
     if (report.players.length !== 2) throw new BadRequestException({ error: 'bronze_supports_1v1_only' });
 
     const outcome = await withTx(this.db, async (tx) => {
@@ -63,8 +72,13 @@ export class ResultsService {
       const [a, b] = report.players as [string, string];
       const reason = report.reason ?? 'complete';
       const rated = rules.manifest.rated;
-      const strength =
-        rated && rules.manifest.verification === 'server' ? STRENGTH.serverAuthoritative : STRENGTH.unrated;
+      const strength = !rated
+        ? STRENGTH.unrated
+        : rules.manifest.verification === 'venue'
+          ? STRENGTH.venueAttest
+          : rules.manifest.verification === 'server'
+            ? STRENGTH.serverAuthoritative
+            : STRENGTH.mutualConfirm;
       const noContest = NO_CONTEST_REASONS.has(reason);
       const winnerId = report.draw || report.winnerSeat === null ? null : report.players[report.winnerSeat] ?? null;
       const outcomeOf = (uid: string): Outcome =>
@@ -119,7 +133,7 @@ export class ResultsService {
         ).rows[0].count,
       );
       const level = rules.manifest.level as Level;
-      const capGroup = level <= 2 ? 'l12' : `l${level}`;
+      const capGroup = visit ? `visit:${visit.bookingId}` : level <= 2 ? 'l12' : `l${level}`;
       const events: GameResultEvent[] = [];
       for (const [uid, before, after] of [[a, ra, na], [b, rb, nb]] as const) {
         const o = outcomeOf(uid);
@@ -140,7 +154,7 @@ export class ResultsService {
           nthGameVsOpponentToday: nth,
           chance: rules.manifest.chance,
         });
-        const bp = applyDailyCap(raw, earned, capForLevel(level));
+        const bp = applyDailyCap(raw, earned, visit ? DAILY_CAP.perVenueVisit : capForLevel(level));
         if (xp > 0) {
           await tx.query(
             `INSERT INTO ledger (user_id, currency, delta, reason, cap_group, ref_id) VALUES ($1, 'XP', $2, 'game', $3, $4)`,
