@@ -109,7 +109,7 @@ jobs:
           ./kubeconform -strict -summary -ignore-missing-schemas /tmp/*.yaml
 
   e2e:
-    name: Bronze end-to-end (docker compose)
+    name: End-to-end, Bronze + Silver (docker compose)
     needs: [node, go, python, elixir]
     runs-on: ubuntu-latest
     steps:
@@ -117,6 +117,7 @@ jobs:
       - uses: actions/setup-node@v7
         with: { node-version: 22, cache: npm, cache-dependency-path: beef-bronze-mvp/package-lock.json }
       - run: npm ci
+      - run: npm run build -w packages/contracts -w packages/game-rules
       - run: npm run keys:dev
       - run: docker compose up -d --build --wait --wait-timeout 300 postgres redis dynamodb
       - run: docker compose up -d --build
