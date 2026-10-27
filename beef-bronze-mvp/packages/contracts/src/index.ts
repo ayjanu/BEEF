@@ -141,6 +141,75 @@ export const LeaderboardEntry = z.object({
 });
 export type LeaderboardEntry = z.infer<typeof LeaderboardEntry>;
 
+// ---------- social: follows, feed, reactions, comments ----------
+
+/** One reaction per person per post, from a fixed set (no free-text reactions to moderate). */
+export const ReactionKind = z.enum(['fire', 'skull', 'clap', 'beef', 'laugh']);
+export type ReactionKind = z.infer<typeof ReactionKind>;
+
+export const ReactionRequest = z.object({ kind: ReactionKind });
+export type ReactionRequest = z.infer<typeof ReactionRequest>;
+
+export const CommentCreateRequest = z.object({ body: z.string().trim().min(1).max(500) });
+export type CommentCreateRequest = z.infer<typeof CommentCreateRequest>;
+
+export const FeedPlayer = z.object({
+  userId: z.uuid(),
+  displayName: z.string(),
+  /** Rating change from this game; null for unrated titles. */
+  ratingDelta: z.number().nullable(),
+});
+
+/**
+ * A feed card. Silver posts are game results ("Ayan beat Sam at Chess by
+ * checkmate"); Gold adds clips once the media moderation pipeline ships.
+ */
+export const FeedPost = z.object({
+  id: z.uuid(),
+  kind: z.enum(['result']),
+  sessionId: z.uuid(),
+  gameId: z.string(),
+  gameName: z.string(),
+  players: z.array(FeedPlayer),
+  winnerSeat: z.number().int().nullable(),
+  draw: z.boolean(),
+  reason: z.string(),
+  scores: z.array(z.number()).nullable(),
+  rated: z.boolean(),
+  reactions: z.record(z.string(), z.number().int()),
+  myReaction: ReactionKind.nullable(),
+  commentCount: z.number().int(),
+  createdAt: z.string(),
+});
+export type FeedPost = z.infer<typeof FeedPost>;
+
+export const FeedPage = z.object({
+  posts: z.array(FeedPost),
+  /** Pass as ?before= for the next page; null at the end. */
+  next: z.string().nullable(),
+});
+export type FeedPage = z.infer<typeof FeedPage>;
+
+export const Comment = z.object({
+  id: z.uuid(),
+  postId: z.uuid(),
+  userId: z.uuid(),
+  displayName: z.string(),
+  body: z.string(),
+  /** "blur": shown behind a tap-to-reveal, like chat. */
+  action: z.enum(['allow', 'blur']),
+  createdAt: z.string(),
+});
+export type Comment = z.infer<typeof Comment>;
+
+export const SocialCounts = z.object({
+  userId: z.uuid(),
+  followers: z.number().int(),
+  following: z.number().int(),
+  iFollow: z.boolean(),
+});
+export type SocialCounts = z.infer<typeof SocialCounts>;
+
 // ---------- safety ----------
 
 export const ReportCreateRequest = z.object({

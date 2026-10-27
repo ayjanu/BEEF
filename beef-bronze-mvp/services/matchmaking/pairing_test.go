@@ -33,7 +33,7 @@ func TestPairsCloseRatingsImmediately(t *testing.T) {
 	pairs := Pair([]Ticket{
 		{UserID: "a", Rating: 1500, RD: settled, EnqueuedAt: now},
 		{UserID: "b", Rating: 1550, RD: settled, EnqueuedAt: now},
-	}, now)
+	}, now, nil)
 	if len(pairs) != 1 {
 		t.Fatalf("want 1 pair, got %d", len(pairs))
 	}
@@ -45,10 +45,10 @@ func TestEstablishedPlayersFarApartWaitThenPair(t *testing.T) {
 		{UserID: "a", Rating: 1500, RD: settled, EnqueuedAt: now},
 		{UserID: "b", Rating: 1720, RD: settled, EnqueuedAt: now},
 	}
-	if got := Pair(tickets, now); len(got) != 0 {
+	if got := Pair(tickets, now, nil); len(got) != 0 {
 		t.Fatalf("a 220-point gap between settled players must not pair at once, got %d pairs", len(got))
 	}
-	if got := Pair(tickets, now.Add(45*time.Second)); len(got) != 1 {
+	if got := Pair(tickets, now.Add(45*time.Second), nil); len(got) != 1 {
 		t.Fatalf("want 1 pair after 45s (band 250), got %d", len(got))
 	}
 }
@@ -60,7 +60,7 @@ func TestNewPlayersAfterOneGamePairImmediately(t *testing.T) {
 		{UserID: "a", Rating: 1338, RD: 290, EnqueuedAt: now},
 		{UserID: "b", Rating: 1662, RD: 290, EnqueuedAt: now},
 	}
-	if got := Pair(tickets, now); len(got) != 1 {
+	if got := Pair(tickets, now, nil); len(got) != 1 {
 		t.Fatalf("uncertain ratings should pair at once, got %d pairs", len(got))
 	}
 }
@@ -71,7 +71,7 @@ func TestNeverPairsBeyondMaxBand(t *testing.T) {
 		{UserID: "a", Rating: 1000, RD: 350, EnqueuedAt: now.Add(-time.Hour)},
 		{UserID: "b", Rating: 1500, RD: 350, EnqueuedAt: now.Add(-time.Hour)},
 	}
-	if got := Pair(tickets, now); len(got) != 0 {
+	if got := Pair(tickets, now, nil); len(got) != 0 {
 		t.Fatalf("500-point gap must never auto-pair, got %d", len(got))
 	}
 }
@@ -86,7 +86,7 @@ func TestEachTicketUsedOnceAndSelfNeverPaired(t *testing.T) {
 		{UserID: "d", Rating: 1530, RD: settled, EnqueuedAt: now},
 	}
 	seen := map[string]bool{}
-	for _, p := range Pair(tickets, now) {
+	for _, p := range Pair(tickets, now, nil) {
 		if p[0].UserID == p[1].UserID {
 			t.Fatal("paired a user with themselves")
 		}
@@ -96,5 +96,19 @@ func TestEachTicketUsedOnceAndSelfNeverPaired(t *testing.T) {
 			}
 			seen[tk.UserID] = true
 		}
+	}
+}
+
+func TestBlockedPlayersAreNeverPaired(t *testing.T) {
+	now := time.Now()
+	tickets := []Ticket{
+		{UserID: "a", Rating: 1500, RD: settled, EnqueuedAt: now},
+		{UserID: "b", Rating: 1510, RD: settled, EnqueuedAt: now},
+		{UserID: "c", Rating: 1520, RD: settled, EnqueuedAt: now},
+	}
+	blocked := func(x, y string) bool { return (x == "a" && y == "b") || (x == "b" && y == "a") }
+	pairs := Pair(tickets, now, blocked)
+	if len(pairs) != 1 || pairs[0][0].UserID != "a" || pairs[0][1].UserID != "c" {
+		t.Fatalf("want a paired with c, got %+v", pairs)
 	}
 }

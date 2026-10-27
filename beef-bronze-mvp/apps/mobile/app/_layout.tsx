@@ -34,7 +34,8 @@ function Root() {
         <Stack.Screen name="profile-setup" options={{ title: 'Your profile' }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="chat/[threadId]" options={{ title: 'Beef' }} />
-        <Stack.Screen name="game/[sessionId]" options={{ title: 'Four Up', gestureEnabled: false }} />
+        <Stack.Screen name="game/[sessionId]" options={{ title: 'Game', gestureEnabled: false }} />
+        <Stack.Screen name="post/[postId]" options={{ title: 'Beef' }} />
       </Stack>
     </RealtimeProvider>
   );

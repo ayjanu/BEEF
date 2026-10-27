@@ -3,6 +3,11 @@ import type {
   AuthResult,
   Challenge,
   ChallengeCreateRequest,
+  Comment,
+  FeedPage,
+  FeedPost,
+  ReactionKind,
+  SocialCounts,
   LeaderboardEntry,
   OtpStartRequest,
   OtpVerifyRequest,
@@ -34,7 +39,7 @@ export const api = createApi({
       return headers;
     },
   }),
-  tagTypes: ['Me', 'Deck', 'Threads', 'Challenges', 'Wallet', 'Leaderboard', 'Sessions'],
+  tagTypes: ['Me', 'Deck', 'Threads', 'Challenges', 'Wallet', 'Leaderboard', 'Sessions', 'Feed', 'Comments', 'Social'],
   endpoints: (b) => ({
     otpStart: b.mutation<{ sent: boolean }, OtpStartRequest>({
       query: (body) => ({ url: '/v1/auth/otp/start', method: 'POST', body }),
@@ -79,6 +84,57 @@ export const api = createApi({
       query: (gameId) => `/v1/leaderboards/${gameId}`,
       providesTags: ['Leaderboard'],
     }),
+    // ---------- social ----------
+    /** Pages merge into one list; pass the previous page's `next` to load more. */
+    feed: b.query<FeedPage, string | null>({
+      query: (before) => (before ? `/v1/feed?before=${encodeURIComponent(before)}` : '/v1/feed'),
+      serializeQueryArgs: ({ endpointName }) => endpointName,
+      merge: (cache, page, { arg }) => {
+        if (!arg) return page;
+        const seen = new Set(cache.posts.map((p) => p.id));
+        return { posts: [...cache.posts, ...page.posts.filter((p) => !seen.has(p.id))], next: page.next };
+      },
+      forceRefetch: ({ currentArg, previousArg }) => currentArg !== previousArg,
+      providesTags: ['Feed'],
+    }),
+    react: b.mutation<FeedPost, { postId: string; kind: ReactionKind | null }>({
+      query: ({ postId, kind }) =>
+        kind
+          ? { url: `/v1/posts/${postId}/reaction`, method: 'PUT', body: { kind } }
+          : { url: `/v1/posts/${postId}/reaction`, method: 'DELETE' },
+      // Patch the cached card in place instead of refetching the whole feed.
+      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
+        const { data } = await queryFulfilled;
+        dispatch(
+          api.util.updateQueryData('feed', null, (draft) => {
+            const i = draft.posts.findIndex((p) => p.id === data.id);
+            if (i >= 0) draft.posts[i] = data;
+          }),
+        );
+      },
+    }),
+    hidePost: b.mutation<{ hidden: boolean }, string>({
+      query: (postId) => ({ url: `/v1/posts/${postId}/hide`, method: 'POST' }),
+      invalidatesTags: ['Feed'],
+    }),
+    comments: b.query<Comment[], string>({ query: (postId) => `/v1/posts/${postId}/comments`, providesTags: ['Comments'] }),
+    addComment: b.mutation<Comment, { postId: string; body: string }>({
+      query: ({ postId, body }) => ({ url: `/v1/posts/${postId}/comments`, method: 'POST', body: { body } }),
+      invalidatesTags: ['Comments', 'Feed'],
+    }),
+    social: b.query<SocialCounts, string>({ query: (userId) => `/v1/users/${userId}/social`, providesTags: ['Social'] }),
+    follow: b.mutation<SocialCounts, { userId: string; follow: boolean }>({
+      query: ({ userId, follow }) => ({ url: `/v1/follows/${userId}`, method: follow ? 'PUT' : 'DELETE' }),
+      invalidatesTags: ['Social', 'Feed'],
+    }),
+    block: b.mutation<{ blocked: boolean }, string>({
+      query: (userId) => ({ url: `/v1/blocks/${userId}`, method: 'PUT' }),
+      invalidatesTags: ['Social', 'Feed', 'Threads', 'Deck', 'Challenges'],
+    }),
+    rematch: b.mutation<Challenge, string>({
+      query: (sessionId) => ({ url: `/v1/sessions/${sessionId}/rematch`, method: 'POST' }),
+      invalidatesTags: ['Challenges'],
+    }),
     report: b.mutation<{ id: string }, ReportCreateRequest>({
       query: (body) => ({ url: '/v1/reports', method: 'POST', body }),
     }),
@@ -104,6 +160,15 @@ export const {
   useWalletQuery,
   useLeaderboardQuery,
   useReportMutation,
+  useFeedQuery,
+  useReactMutation,
+  useHidePostMutation,
+  useCommentsQuery,
+  useAddCommentMutation,
+  useSocialQuery,
+  useFollowMutation,
+  useBlockMutation,
+  useRematchMutation,
 } = api;
 
 /** Pulls the server's error code out of an RTK Query error, for user-facing messages. */

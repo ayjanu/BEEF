@@ -75,6 +75,10 @@ defmodule BeefChatWeb.ThreadChannel do
       length(recent) >= @burst ->
         {:reply, {:error, %{error: "rate_limited"}}, socket}
 
+      # Re-checked on every send (cached up to 60 s): a block closes an open thread.
+      not Membership.member?(socket.assigns.thread_id, socket.assigns.user_id) ->
+        {:reply, {:error, %{error: "thread_closed"}}, socket}
+
       true ->
         socket = assign(socket, :sent, [now | recent])
 

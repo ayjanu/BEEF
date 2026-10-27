@@ -165,6 +165,27 @@ export class ResultsService {
           ratingDelta: Math.round(after.rating - before.rating),
         });
       }
+      // The feed card. No-contests (nobody played) do not post.
+      if (!noContest) {
+        const deltas = events.map((e) => (rated ? e.ratingDelta : null));
+        await tx.query(
+          `INSERT INTO posts (kind, session_id, game_id, players, payload) VALUES ('result', $1, $2, $3, $4)
+           ON CONFLICT (session_id) DO NOTHING`,
+          [
+            session.id,
+            report.gameId,
+            report.players,
+            JSON.stringify({
+              winnerSeat: winnerId === null ? null : report.winnerSeat,
+              draw: report.draw,
+              reason,
+              scores: report.scores ?? null,
+              rated,
+              ratingDeltas: deltas,
+            }),
+          ],
+        );
+      }
       const ratings = rated && !noContest ? ([[a, na.rating], [b, nb.rating]] as Array<[string, number]>) : [];
       return { events, ratings };
     });

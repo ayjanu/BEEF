@@ -83,6 +83,10 @@ const MESSAGES: Record<string, string> = {
   not_matched: 'You can only challenge people you have matched with.',
   challenge_not_open: 'That challenge is no longer open.',
   validation_failed: 'Some details are missing or invalid.',
+  text_blocked: 'That breaks the community rules. Try rewording it.',
+  safety_unavailable: 'We couldn’t check that just now. Try again in a moment.',
+  rematch_already_offered: 'You already asked for a rematch.',
+  not_found: 'That’s no longer available.',
 };
 
 export const styles = StyleSheet.create({

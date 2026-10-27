@@ -16,6 +16,7 @@ import { ResultsService } from './games/results.service.ts';
 import { MatchesConsumer } from './games/matches.consumer.ts';
 import { ProgressionController } from './progression/progression.controller.ts';
 import { ReportsController } from './safety/reports.controller.ts';
+import { SocialController } from './social/social.controller.ts';
 import { HealthController } from './health.controller.ts';
 
 /**
@@ -38,6 +39,7 @@ export class AppModule {
         InternalResultsController,
         ProgressionController,
         ReportsController,
+        SocialController,
       ],
       providers: [
         { provide: CONFIG, useValue: deps.cfg },

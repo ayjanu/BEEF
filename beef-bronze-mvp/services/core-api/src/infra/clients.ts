@@ -41,6 +41,15 @@ export class ServiceClients {
     return this.call(this.cfg.MATCHMAKING_URL, `/v1/tickets/${userId}?${q}`, { method: 'DELETE' });
   }
 
+  /** Text moderation verdict. Throws when the safety service is unreachable: callers decide to fail closed. */
+  async classifyText(text: string, context: 'bio' | 'comment' | 'chat'): Promise<{ action: 'allow' | 'blur' | 'block'; labels: string[] }> {
+    return (await this.call(this.cfg.SAFETY_URL, '/v1/classify/text', {
+      method: 'POST',
+      body: JSON.stringify({ text, context }),
+      timeoutMs: 1500,
+    })) as { action: 'allow' | 'blur' | 'block'; labels: string[] };
+  }
+
   createReport(body: Record<string, unknown>) {
     return this.call(this.cfg.SAFETY_URL, '/v1/reports', { method: 'POST', body: JSON.stringify(body) });
   }

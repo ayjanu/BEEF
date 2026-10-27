@@ -1,9 +1,17 @@
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import type { Channel } from 'phoenix';
 import { useEffect, useRef, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native';
+import { Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { useSocket } from '@/realtime';
-import { errorCode, useChallengeMutation, useGamesQuery, useThreadsQuery } from '@/store/api';
+import {
+  errorCode,
+  useBlockMutation,
+  useChallengeMutation,
+  useFollowMutation,
+  useGamesQuery,
+  useSocialQuery,
+  useThreadsQuery,
+} from '@/store/api';
 import { useAppSelector } from '@/store';
 import { colors, space } from '@/theme';
 import { Body, Button, ErrorText, styles } from '@/ui';
@@ -31,6 +39,28 @@ export default function Chat() {
   const games = useGamesQuery();
   const [gameId, setGameId] = useState('four-up');
   const gameName = games.data?.find((g) => g.id === gameId)?.name ?? 'Four Up';
+  const social = useSocialQuery(other?.userId ?? '', { skip: !other });
+  const [follow] = useFollowMutation();
+  const [block] = useBlockMutation();
+
+  function confirmBlock() {
+    if (!other) return;
+    Alert.alert(
+      `Block ${other.displayName}?`,
+      'They won’t be able to message you, challenge you, or see your results. They aren’t told.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: async () => {
+            await block(other.userId);
+            router.back();
+          },
+        },
+      ],
+    );
+  }
   const channel = useRef<Channel | null>(null);
   const [challenge, challengeState] = useChallengeMutation();
 
@@ -56,7 +86,13 @@ export default function Chat() {
         setNotice(null);
       })
       .receive('error', (e: { error: string }) =>
-        setNotice(e.error === 'blocked' ? 'That message breaks the community rules and was not sent.' : 'Could not send. Try again.'),
+        setNotice(
+          e.error === 'blocked'
+            ? 'That message breaks the community rules and was not sent.'
+            : e.error === 'thread_closed'
+              ? 'This conversation is closed.'
+              : 'Could not send. Try again.',
+        ),
       );
   }
 
@@ -93,6 +129,14 @@ export default function Chat() {
             onPress={() => void challenge({ toUserId: other.userId, gameId })}
           />
           {challengeState.isSuccess ? <Body muted>Challenge sent. Squash that beef!</Body> : null}
+          <View style={{ flexDirection: 'row', gap: space(2), paddingVertical: space(1) }}>
+            <Pressable accessibilityRole="button" onPress={() => void follow({ userId: other.userId, follow: !social.data?.iFollow })}>
+              <Text style={{ color: colors.text }}>{social.data?.iFollow ? 'Following ✓' : 'Follow'}</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" onPress={confirmBlock}>
+              <Text style={{ color: colors.muted }}>Block</Text>
+            </Pressable>
+          </View>
           <ErrorText code={errorCode(challengeState.error)} />
         </View>
       ) : null}

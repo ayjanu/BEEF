@@ -5,8 +5,9 @@ import { getRules } from '@beef/game-rules';
 import { config } from '@/config';
 import { BOARDS, type SessionView } from '@/games/boards';
 import { useAppSelector } from '@/store';
+import { errorCode, useRematchMutation } from '@/store/api';
 import { colors, fonts, space } from '@/theme';
-import { Body, Button, Screen } from '@/ui';
+import { Body, Button, ErrorText, Screen } from '@/ui';
 
 type ServerMsg =
   | { type: 'hello'; seat: number; session: SessionView }
@@ -51,6 +52,7 @@ export default function Game() {
   const [view, setView] = useState<SessionView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const countdown = useCountdown(view?.status === 'active' ? view.deadline : null);
+  const [rematch, rematchState] = useRematchMutation();
 
   useEffect(() => {
     if (!token || !sessionId) return;
@@ -118,7 +120,18 @@ export default function Game() {
         {Board ? <Board view={view} seat={seat} canAct={canAct} send={send} /> : <Body>Update the app to play this game.</Body>}
         {error && !end ? <Body muted>{ERRORS[error] ?? `Move rejected: ${error}`}</Body> : null}
         {end ? (
-          <Button label="Back to Beefs" onPress={() => router.replace('/beefs')} />
+          <>
+            {view.players.length === 2 ? (
+              <Button
+                label={rematchState.isSuccess ? 'Rematch sent' : 'Run it back'}
+                busy={rematchState.isLoading}
+                disabled={rematchState.isSuccess}
+                onPress={() => void rematch(view.sessionId)}
+              />
+            ) : null}
+            <ErrorText code={errorCode(rematchState.error)} />
+            <Button label="Back to Beefs" kind="ghost" onPress={() => router.replace('/beefs')} />
+          </>
         ) : (
           <Button label="Resign" kind="ghost" onPress={() => ws.current?.send(JSON.stringify({ type: 'resign' }))} />
         )}

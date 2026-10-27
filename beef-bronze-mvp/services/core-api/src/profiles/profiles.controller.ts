@@ -5,6 +5,8 @@ import {
   Get,
   HttpCode,
   Inject,
+  ServiceUnavailableException,
+  UnprocessableEntityException,
   NotFoundException,
   Param,
   ParseUUIDPipe,
@@ -15,6 +17,7 @@ import {
 import { ProfileUpdateRequest, type Profile, type ProfileUpdate } from '@beef/contracts';
 import { CONFIG, type Config } from '../config.ts';
 import { DB, type Db } from '../infra/db.ts';
+import { CLIENTS, type ServiceClients } from '../infra/clients.ts';
 import { TOKENS, type TokenService } from '../auth/jwt.ts';
 import { CurrentUser, UserGuard, ZodPipe, type AuthedUser } from '../common/http.ts';
 
@@ -50,6 +53,7 @@ export class ProfilesController {
     @Inject(DB) private readonly db: Db,
     @Inject(CONFIG) private readonly cfg: Config,
     @Inject(TOKENS) private readonly tokens: TokenService,
+    @Inject(CLIENTS) private readonly clients: ServiceClients,
   ) {}
 
   @Get('me')
@@ -66,6 +70,15 @@ export class ProfilesController {
   ): Promise<Profile> {
     // Adults only (Spec 04). Silver replaces self-declared DOB with store age signals + age estimation.
     if (ageOn(body.birthDate) < 18) throw new ForbiddenException({ error: 'under_18' });
+    // Bios and names are public: screen them, and fail closed if screening is down.
+    const text = `${body.displayName}\n${body.bio}`.trim();
+    let verdict: { action: string };
+    try {
+      verdict = await this.clients.classifyText(text, 'bio');
+    } catch {
+      throw new ServiceUnavailableException({ error: 'safety_unavailable' });
+    }
+    if (verdict.action === 'block') throw new UnprocessableEntityException({ error: 'text_blocked' });
     await this.db.query(
       `INSERT INTO profiles (user_id, display_name, bio, birth_date, intents, vibe_tags, games)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
