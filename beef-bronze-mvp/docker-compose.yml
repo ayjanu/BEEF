@@ -42,7 +42,7 @@ services:
       retries: 30
 
   dynamodb:
-    image: public.ecr.aws/aws-dynamodb-local/aws-dynamodb-local:latest
+    image: ${DYNAMODB_IMAGE:-public.ecr.aws/aws-dynamodb-local/aws-dynamodb-local:latest}
     command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-inMemory"]
     ports: ["8001:8000"]
 
@@ -70,6 +70,8 @@ services:
       MATCHMAKING_URL: http://matchmaking:8080
       CHAT_URL: http://chat:4000
       SAFETY_URL: http://safety:8000
+      # Fast Level 4 check-in prompts for local testing (default 30 s).
+      SAFETY_SWEEP_MS: "2000"
     ports: ["3000:3000"]
     depends_on:
       postgres: { condition: service_healthy }
@@ -81,6 +83,7 @@ services:
       <<: *common
       PORT: "3100"
       CORE_API_URL: http://core-api:3000
+      SAFETY_URL: http://safety:8000
     ports: ["3100:3100"]
     depends_on:
       redis: { condition: service_healthy }

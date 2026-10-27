@@ -25,7 +25,7 @@ defmodule BeefChatWeb.NotifyController do
   @moduledoc "core-api pushes realtime events (match found, results...) to users' private channels."
   use Phoenix.Controller, formats: [:json]
 
-  @allowed ~w(mutual_match challenge_received match_found game_result)
+  @allowed ~w(mutual_match challenge_received match_found game_result booking_invite booking_update safety_check)
 
   def notify(conn, %{"userIds" => ids, "event" => event, "payload" => payload})
       when is_list(ids) and event in @allowed do

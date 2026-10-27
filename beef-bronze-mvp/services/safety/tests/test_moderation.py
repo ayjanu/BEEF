@@ -40,6 +40,7 @@ def test_off_platform_push_is_blurred():
 
 def test_report_severity_and_clocks():
     assert severity_for("minor") == "critical"
+    assert severity_for("in_person") == "critical"
     assert severity_for("ncii") == "high"
     assert severity_for("unknown-category") == "low"
     t0 = datetime(2026, 10, 26, tzinfo=timezone.utc)
@@ -48,3 +49,11 @@ def test_report_severity_and_clocks():
     # Our internal high-severity resolution target is stricter than the 48 h legal maximum.
     _, high_resolve = due_times("high", t0)
     assert high_resolve - t0 < NCII_LEGAL_DEADLINE
+
+
+def test_game_text_blocks_personal_info_but_allows_ordinary_statements():
+    p = LexiconProvider()
+    assert p.classify("My number is 214-555-0100", "game_text").action == "block"
+    assert p.classify("I live at 123 Main Street", "two_truths").action == "block"
+    assert p.classify("I have run three marathons", "two_truths").action == "allow"
+    assert p.classify("Is it bigger than a breadbox?", "game_text").action == "allow"

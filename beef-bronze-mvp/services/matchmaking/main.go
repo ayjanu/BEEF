@@ -150,7 +150,7 @@ func (s *server) tick(ctx context.Context) {
 			}
 			tickets = append(tickets, Ticket{UserID: user, Rating: m.Score, RD: rd, EnqueuedAt: time.UnixMilli(ms)})
 		}
-		for _, p := range Pair(tickets, now) {
+		for _, p := range Pair(tickets, now, s.blockedPairs(ctx, tickets)) {
 			players, _ := json.Marshal([]string{p[0].UserID, p[1].UserID})
 			ok, err := claim.Run(ctx, s.rdb,
 				[]string{qk, ticketKey(p[0].UserID, game), ticketKey(p[1].UserID, game), matchStream},
@@ -164,6 +164,31 @@ func (s *server) tick(ctx context.Context) {
 			}
 		}
 	}
+}
+
+// blockKey is maintained by core-api: the set of users this user must never
+// meet (blocked in either direction).
+func blockKey(user string) string { return "beef:blocks:" + user }
+
+// blockedPairs loads the block sets of everyone waiting in one queue (one
+// pipelined round trip) and returns the Avoid check for Pair. core-api also
+// re-checks before opening a session, so a Redis miss cannot pair blocked users.
+func (s *server) blockedPairs(ctx context.Context, tickets []Ticket) Avoid {
+	pipe := s.rdb.Pipeline()
+	cmds := make(map[string]*redis.StringSliceCmd, len(tickets))
+	for _, t := range tickets {
+		cmds[t.UserID] = pipe.SMembers(ctx, blockKey(t.UserID))
+	}
+	if _, err := pipe.Exec(ctx); err != nil && err != redis.Nil {
+		s.log.Warn("load blocks", "err", err)
+	}
+	blocked := make(map[[2]string]bool)
+	for user, cmd := range cmds {
+		for _, other := range cmd.Val() {
+			blocked[[2]string{user, other}] = true
+		}
+	}
+	return func(a, b string) bool { return blocked[[2]string{a, b}] || blocked[[2]string{b, a}] }
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

@@ -21,6 +21,7 @@ import { REDIS } from '../infra/redis.ts';
 import { CLIENTS, type ServiceClients } from '../infra/clients.ts';
 import { CurrentUser, InternalGuard, UserGuard, ZodPipe, requireTier, type AuthedUser } from '../common/http.ts';
 import { PROFILE_SELECT, toProfile } from '../profiles/profiles.controller.ts';
+import { isBlockedBetween, notBlocked } from '../social/blocks.ts';
 
 export const pairKey = (a: string, b: string) => [a, b].sort().join(':');
 
@@ -66,6 +67,7 @@ export class MatchController {
            AND u.status = 'active'
            AND u.tier <> 'V0'
            AND p.intents && me.intents
+           AND ${notBlocked('$1', 'p.user_id')}
            AND NOT EXISTS (
              SELECT 1 FROM swipes s
              WHERE s.swiper_id = $1 AND s.target_id = p.user_id AND s.created_at > now() - interval '30 days')
@@ -98,7 +100,9 @@ export class MatchController {
 
     const result = await withTx(this.db, async (tx) => {
       const target = await tx.query(`SELECT 1 FROM users WHERE id = $1 AND status = 'active'`, [body.targetId]);
-      if (target.rowCount === 0) throw new NotFoundException({ error: 'not_found' });
+      if (target.rowCount === 0 || (await isBlockedBetween(tx, user.id, body.targetId))) {
+        throw new NotFoundException({ error: 'not_found' });
+      }
       await tx.query(
         `INSERT INTO swipes (swiper_id, target_id, direction) VALUES ($1, $2, $3)
          ON CONFLICT (swiper_id, target_id) DO UPDATE SET direction = EXCLUDED.direction, created_at = now()`,
@@ -130,6 +134,10 @@ export class MatchController {
          JOIN thread_members mine ON mine.thread_id = t.id AND mine.user_id = $1
          JOIN thread_members m ON m.thread_id = t.id
          LEFT JOIN profiles p ON p.user_id = m.user_id
+         WHERE NOT EXISTS (
+           SELECT 1 FROM thread_members o JOIN blocks b
+             ON (b.blocker = $1 AND b.blocked = o.user_id) OR (b.blocked = $1 AND b.blocker = o.user_id)
+           WHERE o.thread_id = t.id)
          GROUP BY t.id
          ORDER BY t.created_at DESC`,
         [user.id],
@@ -149,6 +157,13 @@ export class InternalThreadsController {
   async members(@Param('id', ParseUUIDPipe) id: string): Promise<{ userIds: string[] }> {
     const rows = (await this.db.query('SELECT user_id FROM thread_members WHERE thread_id = $1', [id])).rows;
     if (rows.length === 0) throw new NotFoundException({ error: 'not_found' });
-    return { userIds: rows.map((r) => r.user_id) };
+    const userIds: string[] = rows.map((r) => r.user_id);
+    // A block closes the thread for both people: chat refuses to join or deliver.
+    const blocked = await this.db.query(
+      'SELECT 1 FROM blocks WHERE blocker = ANY($1) AND blocked = ANY($1) LIMIT 1',
+      [userIds],
+    );
+    if ((blocked.rowCount ?? 0) > 0) throw new ForbiddenException({ error: 'thread_closed' });
+    return { userIds };
   }
 }

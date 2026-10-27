@@ -19,6 +19,10 @@ permissions:
   id-token: write # OIDC token for AWS
   contents: read
 
+defaults:
+  run:
+    working-directory: beef-bronze-mvp
+
 concurrency:
   group: deploy-dev
   cancel-in-progress: false
@@ -45,7 +49,8 @@ jobs:
       - name: Build and push images (tagged by commit, immutable)
         run: |
           set -euo pipefail
-          build() { docker build -t "$REGISTRY/beef/$1:$TAG" "${@:2}" && docker push "$REGISTRY/beef/$1:$TAG"; }
+          # Base images from Docker Hub: anonymous public.ecr.aws pulls from shared runner IPs hit its data limit.
+          build() { docker build --build-arg BASE_REGISTRY=docker.io/library -t "$REGISTRY/beef/$1:$TAG" "${@:2}" && docker push "$REGISTRY/beef/$1:$TAG"; }
           build core-api    -f deploy/docker/node-service.Dockerfile --build-arg SERVICE=core-api .
           build game-engine -f deploy/docker/node-service.Dockerfile --build-arg SERVICE=game-engine .
           build matchmaking services/matchmaking
@@ -69,7 +74,7 @@ jobs:
           done
 
       - uses: actions/setup-node@v7
-        with: { node-version: 22, cache: npm }
+        with: { node-version: 22, cache: npm, cache-dependency-path: beef-bronze-mvp/package-lock.json }
 
       - name: End-to-end test against AWS dev
         env:

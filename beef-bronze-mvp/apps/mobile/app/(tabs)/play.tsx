@@ -36,7 +36,9 @@ export default function Play() {
               LEVEL {item.level} · {LEVEL_NAMES[item.level].toUpperCase()}
             </Text>
             <Text style={{ color: colors.text, fontSize: 24, fontWeight: '700', marginVertical: space(0.5) }}>{item.name}</Text>
-            <Body muted>{item.formats.join(', ')} · {item.turnBased ? 'turn-based' : 'real-time'}</Body>
+            <Body muted>
+              {item.formats.join(', ')} · {item.turnBased ? 'turn-based' : 'real-time'} · {item.rated ? 'ranked' : 'just for fun (XP)'}
+            </Body>
             {queuedFor === item.id ? (
               <Button
                 label="Cancel search"
@@ -60,7 +62,13 @@ export default function Play() {
             {queuedFor === item.id ? <Body muted>Now matching you with someone your level…</Body> : null}
           </View>
         )}
-        ListFooterComponent={<Body muted>More titles arrive in Silver: 20 across all four levels (Spec 02).</Body>}
+        ListFooterComponent={
+          <View style={styles.card}>
+            <Text style={{ color: colors.red, fontSize: 13 }}>LEVEL 4 · BEEF!</Text>
+            <Body>Settle it in person: pool, darts, bowling and more at partner venues.</Body>
+            <Button label="Find a venue" kind="ghost" onPress={() => router.push('/in-person')} />
+          </View>
+        }
       />
     </Screen>
   );

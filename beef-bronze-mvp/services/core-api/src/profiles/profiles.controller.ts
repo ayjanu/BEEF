@@ -5,6 +5,8 @@ import {
   Get,
   HttpCode,
   Inject,
+  ServiceUnavailableException,
+  UnprocessableEntityException,
   NotFoundException,
   Param,
   ParseUUIDPipe,
@@ -15,8 +17,10 @@ import {
 import { ProfileUpdateRequest, type Profile, type ProfileUpdate } from '@beef/contracts';
 import { CONFIG, type Config } from '../config.ts';
 import { DB, type Db } from '../infra/db.ts';
+import { CLIENTS, type ServiceClients } from '../infra/clients.ts';
 import { TOKENS, type TokenService } from '../auth/jwt.ts';
 import { CurrentUser, UserGuard, ZodPipe, type AuthedUser } from '../common/http.ts';
+import { notBlocked } from '../social/blocks.ts';
 
 export function ageOn(birthDate: string | Date, today = new Date()): number {
   const b = new Date(birthDate);
@@ -50,6 +54,7 @@ export class ProfilesController {
     @Inject(DB) private readonly db: Db,
     @Inject(CONFIG) private readonly cfg: Config,
     @Inject(TOKENS) private readonly tokens: TokenService,
+    @Inject(CLIENTS) private readonly clients: ServiceClients,
   ) {}
 
   @Get('me')
@@ -66,6 +71,15 @@ export class ProfilesController {
   ): Promise<Profile> {
     // Adults only (Spec 04). Silver replaces self-declared DOB with store age signals + age estimation.
     if (ageOn(body.birthDate) < 18) throw new ForbiddenException({ error: 'under_18' });
+    // Bios and names are public: screen them, and fail closed if screening is down.
+    const text = `${body.displayName}\n${body.bio}`.trim();
+    let verdict: { action: string };
+    try {
+      verdict = await this.clients.classifyText(text, 'bio');
+    } catch {
+      throw new ServiceUnavailableException({ error: 'safety_unavailable' });
+    }
+    if (verdict.action === 'block') throw new UnprocessableEntityException({ error: 'text_blocked' });
     await this.db.query(
       `INSERT INTO profiles (user_id, display_name, bio, birth_date, intents, vibe_tags, games)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -78,23 +92,32 @@ export class ProfilesController {
   }
 
   /**
-   * Dev stub for the V1 selfie-liveness check. Local/dev only; Silver replaces
-   * it with the identity vendor's webhook, which is the only path that can raise a tier.
+   * Dev stub for identity verification. Local/dev only: grants V1 (selfie
+   * liveness) by default, or the tier in the body (V2 ID check, V3 screening)
+   * so Level 4 can be exercised. In staging and prod the identity vendor's
+   * webhook is the only path that can raise a tier. Never lowers a tier.
    */
   @Post('me/verify/liveness')
   @HttpCode(200)
-  async devLiveness(@CurrentUser() user: AuthedUser): Promise<{ tier: string; token: string }> {
+  async devLiveness(
+    @CurrentUser() user: AuthedUser,
+    @Body() body?: { tier?: string },
+  ): Promise<{ tier: string; token: string }> {
     if (this.cfg.APP_ENV !== 'local' && this.cfg.APP_ENV !== 'dev') {
       throw new ForbiddenException({ error: 'use_identity_vendor' });
     }
-    await this.db.query(`UPDATE users SET tier = 'V1' WHERE id = $1 AND tier = 'V0'`, [user.id]);
+    const want = body?.tier ?? 'V1';
+    if (!['V1', 'V2', 'V3'].includes(want)) throw new ForbiddenException({ error: 'bad_tier' });
+    await this.db.query(`UPDATE users SET tier = $2 WHERE id = $1 AND tier < $2`, [user.id, want]);
     const tier = (await this.db.query('SELECT tier FROM users WHERE id = $1', [user.id])).rows[0].tier;
     return { tier, token: await this.tokens.sign(user.id, tier) };
   }
 
   @Get('profiles/:id')
-  async byId(@Param('id', ParseUUIDPipe) id: string): Promise<Profile> {
-    const row = (await this.db.query(`${PROFILE_SELECT} WHERE p.user_id = $1 AND u.status = 'active'`, [id])).rows[0];
+  async byId(@CurrentUser() user: AuthedUser, @Param('id', ParseUUIDPipe) id: string): Promise<Profile> {
+    const row = (
+      await this.db.query(`${PROFILE_SELECT} WHERE p.user_id = $1 AND u.status = 'active' AND ${notBlocked('$2', 'p.user_id')}`, [id, user.id])
+    ).rows[0];
     if (!row) throw new NotFoundException({ error: 'not_found' });
     return toProfile(row);
   }

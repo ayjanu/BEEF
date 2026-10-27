@@ -84,7 +84,11 @@ export const fourUp: GameRules<FourUpState, FourUpMove> = {
     maxPlayers: 2,
     chance: 'none',
     turnBased: true,
-    rulesVersion: 1,
+    rulesVersion: 2,
+    rated: true,
+    verification: 'server',
+    userText: false,
+    turnTimeoutMs: 24 * 60 * 60 * 1000, // Spec 02: a Level 1 turn may wait up to 24 h, then forfeits
   },
 
   init(_seed, playerCount) {
@@ -92,8 +96,8 @@ export const fourUp: GameRules<FourUpState, FourUpMove> = {
     return { board: emptyBoard(), turn: 0, moves: 0, winner: null, draw: false, winLine: null };
   },
 
-  currentSeat(state) {
-    return state.winner !== null || state.draw ? null : state.turn;
+  awaiting(state) {
+    return state.winner !== null || state.draw ? [] : [state.turn];
   },
 
   validate(state, move, seat) {

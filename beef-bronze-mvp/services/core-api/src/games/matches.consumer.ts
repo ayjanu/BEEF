@@ -5,6 +5,9 @@ import type { Redis } from 'ioredis';
 import { REDIS } from '../infra/redis.ts';
 import { CLIENTS, type ServiceClients } from '../infra/clients.ts';
 import { SessionsService } from './sessions.service.ts';
+import { DB, type Db } from '../infra/db.ts';
+import { CONFIG, type Config } from '../config.ts';
+import { cacheBlock, isBlockedBetween } from '../social/blocks.ts';
 
 export const MATCH_STREAM = 'beef:matches';
 const GROUP = 'core-api';
@@ -24,8 +27,23 @@ export class MatchesConsumer implements OnApplicationBootstrap, OnApplicationShu
   constructor(
     @Inject(REDIS) private readonly redis: Redis,
     @Inject(CLIENTS) private readonly clients: ServiceClients,
+    @Inject(DB) private readonly db: Db,
+    @Inject(CONFIG) private readonly cfg: Config,
     private readonly sessions: SessionsService,
   ) {}
+
+  /** Backstop for the matchmaker's block check (its Redis sets can lag): put both back in line. */
+  private async requeue(gameId: string, players: string[]) {
+    for (const userId of players) {
+      const r = (
+        await this.db.query(`SELECT rating, rd FROM ratings WHERE user_id = $1 AND game_id = $2 AND format = '1v1'`, [
+          userId,
+          gameId,
+        ])
+      ).rows[0];
+      await this.clients.enqueue({ userId, gameId, rating: r?.rating ?? 1500, rd: r?.rd ?? 350, region: this.cfg.DEFAULT_REGION });
+    }
+  }
 
   async onApplicationBootstrap() {
     try {
@@ -66,6 +84,13 @@ export class MatchesConsumer implements OnApplicationBootstrap, OnApplicationShu
     try {
       const raw = Object.fromEntries(Array.from({ length: fields.length / 2 }, (_, i) => [fields[2 * i], fields[2 * i + 1]]));
       const match = MatchFound.parse({ ...raw, players: JSON.parse(String(raw.players)) });
+      if (await isBlockedBetween(this.db, match.players[0]!, match.players[1]!)) {
+        this.log.warn(`match ${id} pairs blocked users; repairing the block cache and requeueing`);
+        // The matchmaker's cache missed this block: restore it first, or the same pair loops forever.
+        await cacheBlock(this.redis, match.players[0]!, match.players[1]!);
+        await this.requeue(match.gameId, match.players);
+        return;
+      }
       const session = await this.sessions.open(match.gameId, match.players, 'queue');
       await this.clients.notify(match.players, RealtimeEvent.matchFound, session);
       this.log.log(`queue match → session ${session.id}`);

@@ -28,6 +28,7 @@ import { CLIENTS, type ServiceClients } from '../infra/clients.ts';
 import { CurrentUser, UserGuard, ZodPipe, requireTier, type AuthedUser } from '../common/http.ts';
 import { pairKey } from '../match/match.controller.ts';
 import { SessionsService, toSession } from './sessions.service.ts';
+import { isBlockedBetween } from '../social/blocks.ts';
 
 function assertGame(gameId: string) {
   if (!registry[gameId]) throw new BadRequestException({ error: 'unknown_game', gameId });
@@ -73,6 +74,7 @@ export class GamesController {
     // Bronze safety rule: you can only challenge someone you have matched with.
     const matched = await this.db.query('SELECT 1 FROM threads WHERE pair_key = $1', [pairKey(user.id, body.toUserId)]);
     if (matched.rowCount === 0) throw new ForbiddenException({ error: 'not_matched' });
+    if (await isBlockedBetween(this.db, user.id, body.toUserId)) throw new ForbiddenException({ error: 'not_matched' });
     const row = (
       await this.db.query(
         `INSERT INTO challenges (from_user, to_user, game_id) VALUES ($1, $2, $3) RETURNING *`,

@@ -16,6 +16,11 @@ import { ResultsService } from './games/results.service.ts';
 import { MatchesConsumer } from './games/matches.consumer.ts';
 import { ProgressionController } from './progression/progression.controller.ts';
 import { ReportsController } from './safety/reports.controller.ts';
+import { SocialController } from './social/social.controller.ts';
+import { BlockCacheWarmer } from './social/blocks.ts';
+import { InternalVenuesController, VenueStaffController, VenuesController } from './venues/venues.controller.ts';
+import { MeetAlerts } from './venues/meet-alerts.ts';
+import { SafetySweep } from './venues/safety-sweep.ts';
 import { HealthController } from './health.controller.ts';
 
 /**
@@ -38,6 +43,10 @@ export class AppModule {
         InternalResultsController,
         ProgressionController,
         ReportsController,
+        SocialController,
+        VenuesController,
+        VenueStaffController,
+        InternalVenuesController,
       ],
       providers: [
         { provide: CONFIG, useValue: deps.cfg },
@@ -50,6 +59,9 @@ export class AppModule {
         SessionsService,
         ResultsService,
         MatchesConsumer,
+        MeetAlerts,
+        BlockCacheWarmer,
+        SafetySweep,
       ],
     };
   }

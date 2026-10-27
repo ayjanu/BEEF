@@ -41,6 +41,29 @@ export class ServiceClients {
     return this.call(this.cfg.MATCHMAKING_URL, `/v1/tickets/${userId}?${q}`, { method: 'DELETE' });
   }
 
+  /** Text moderation verdict. Throws when the safety service is unreachable: callers decide to fail closed. */
+  async classifyText(text: string, context: 'bio' | 'comment' | 'chat'): Promise<{ action: 'allow' | 'blur' | 'block'; labels: string[] }> {
+    return (await this.call(this.cfg.SAFETY_URL, '/v1/classify/text', {
+      method: 'POST',
+      body: JSON.stringify({ text, context }),
+      timeoutMs: 1500,
+    })) as { action: 'allow' | 'blur' | 'block'; labels: string[] };
+  }
+
+  /**
+   * SMS for safety alerts. Silver has no SMS provider wired (OTP also uses the
+   * dev code), so local and dev log the message instead of sending it; in
+   * staging and prod this throws until the provider is configured, and callers
+   * fall back to the critical review that a human acts on.
+   */
+  async sendSms(to: string, body: string): Promise<void> {
+    if (this.cfg.APP_ENV === 'local' || this.cfg.APP_ENV === 'dev') {
+      this.log.log(`sms (dev, not sent) to ${to.slice(0, 5)}…: ${body}`);
+      return;
+    }
+    throw new Error('sms_provider_not_configured');
+  }
+
   createReport(body: Record<string, unknown>) {
     return this.call(this.cfg.SAFETY_URL, '/v1/reports', { method: 'POST', body: JSON.stringify(body) });
   }
